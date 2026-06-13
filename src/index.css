@@ -1,0 +1,89 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&family=Baloo+2:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Nunito', system-ui, sans-serif;
+  line-height: 1.6;
+  font-weight: 500;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary-500 hover:bg-primary-600 active:bg-primary-700 text-white font-bold py-3 px-6 rounded-xl transition-all duration-200 shadow-card hover:shadow-card-hover active:scale-95;
+  }
+
+  .btn-secondary {
+    @apply bg-secondary-500 hover:bg-secondary-600 active:bg-secondary-700 text-white font-bold py-3 px-6 rounded-xl transition-all duration-200 shadow-card hover:shadow-card-hover active:scale-95;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent hover:bg-gray-100 active:bg-gray-200 text-gray-700 font-semibold py-3 px-6 rounded-xl transition-all duration-200;
+  }
+
+  .card {
+    @apply bg-white rounded-2xl shadow-card p-4 transition-all duration-200;
+  }
+
+  .card-hover {
+    @apply hover:shadow-card-hover hover:-translate-y-1;
+  }
+
+  .input {
+    @apply w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:outline-none transition-all duration-200 bg-white;
+  }
+
+  .badge {
+    @apply inline-flex items-center justify-center px-3 py-1 text-sm font-bold rounded-full;
+  }
+
+  .badge-gold {
+    @apply bg-gold-500 text-yellow-900;
+  }
+
+  .badge-primary {
+    @apply bg-primary-100 text-primary-800;
+  }
+
+  .badge-success {
+    @apply bg-success-100 text-success-800;
+  }
+}
+
+@layer utilities {
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .touch-target {
+    min-height: 48px;
+    min-width: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
