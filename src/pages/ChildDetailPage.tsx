@@ -21,10 +21,14 @@ import {
   AlertCircle,
   Plus,
   Minus,
+  TrendingUp,
+  TrendingDown,
+  MessageCircle,
+  History,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
-type TabType = 'overview' | 'checkins' | 'redemptions' | 'tasks';
+type TabType = 'overview' | 'checkins' | 'redemptions' | 'tasks' | 'stars' | 'encouragement';
 
 export const ChildDetailPage: React.FC = () => {
   const navigate = useNavigate();
@@ -35,12 +39,15 @@ export const ChildDetailPage: React.FC = () => {
     assignTaskToChild,
     unassignTaskFromChild,
     adjustStars,
+    setChildEncouragement,
   } = useStore();
 
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [showStarModal, setShowStarModal] = useState(false);
   const [starDelta, setStarDelta] = useState(0);
   const [starReason, setStarReason] = useState('');
+  const [showEncouragementModal, setShowEncouragementModal] = useState(false);
+  const [encouragementText, setEncouragementText] = useState('');
 
   const childDetail = useMemo(() => {
     if (!userId) return null;
@@ -72,6 +79,9 @@ export const ChildDetailPage: React.FC = () => {
     completedCheckIns,
     completedRedemptions,
     allTasks,
+    starHistory,
+    taskAssignmentHistory,
+    encouragement,
   } = childDetail;
 
   const getTaskById = (taskId: string) => {
@@ -100,11 +110,23 @@ export const ChildDetailPage: React.FC = () => {
     setStarReason('');
   };
 
+  const handleSaveEncouragement = () => {
+    if (!userId) return;
+    setChildEncouragement(userId, encouragementText);
+    setShowEncouragementModal(false);
+  };
+
+  const handleEditEncouragement = () => {
+    setEncouragementText(encouragement || '');
+    setShowEncouragementModal(true);
+  };
+
   const tabs: { id: TabType; label: string; count?: number }[] = [
     { id: 'overview', label: '概况' },
     { id: 'checkins', label: '打卡', count: pendingCheckIns.length },
     { id: 'redemptions', label: '兑换', count: pendingRedemptions.length },
     { id: 'tasks', label: '习惯' },
+    { id: 'stars', label: '星星' },
   ];
 
   const repeatTypeLabels: Record<string, string> = {
@@ -163,6 +185,46 @@ export const ChildDetailPage: React.FC = () => {
 
         {activeTab === 'overview' && (
           <>
+            {encouragement && (
+              <Card className="bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-200">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center">
+                    <MessageCircle className="w-5 h-5 text-yellow-600" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-bold text-gray-800">家长鼓励语</h3>
+                      <button
+                        onClick={handleEditEncouragement}
+                        className="text-xs text-primary-600 hover:text-primary-700"
+                      >
+                        编辑
+                      </button>
+                    </div>
+                    <p className="text-gray-700">{encouragement}</p>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            <Card
+              className={clsx(
+                'cursor-pointer transition-all',
+                !encouragement && 'bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-200 hover:shadow-card-hover'
+              )}
+              onClick={handleEditEncouragement}
+            >
+              {!encouragement ? (
+                <div className="flex items-center gap-3">
+                  <MessageCircle className="w-8 h-8 text-yellow-600" />
+                  <div>
+                    <h3 className="font-bold text-gray-800 mb-1">添加鼓励语</h3>
+                    <p className="text-sm text-gray-600">给孩子留言鼓励他/她</p>
+                  </div>
+                </div>
+              ) : null}
+            </Card>
+
             <Card>
               <div className="flex items-center gap-2 mb-4">
                 <Calendar className="w-5 h-5 text-success-500" />
@@ -353,49 +415,106 @@ export const ChildDetailPage: React.FC = () => {
 
         {activeTab === 'tasks' && (
           <Card>
-            <h3 className="font-bold text-gray-800 mb-4">全部习惯</h3>
-            <div className="space-y-3">
-              {allTasks.map((task) => {
-                const isAssigned = assignedTasks.some(t => t.id === task.id);
-                return (
-                  <div
-                    key={task.id}
-                    className={clsx(
-                      'p-3 rounded-xl border-2 transition-all',
-                      isAssigned
-                        ? 'bg-primary-50 border-primary-300'
-                        : 'bg-gray-50 border-transparent'
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => handleToggleTask(task.id)}
-                        className={clsx(
-                          'w-8 h-8 rounded-full flex items-center justify-center transition-all',
-                          isAssigned
-                            ? 'bg-primary-500 text-white'
-                            : 'bg-gray-200 text-gray-400'
-                        )}
-                      >
-                        {isAssigned ? (
-                          <CheckCircle2 className="w-5 h-5" />
-                        ) : (
-                          <Plus className="w-5 h-5" />
-                        )}
-                      </button>
-                      <span className="text-2xl">{task.icon}</span>
-                      <div className="flex-1">
-                        <div className="font-semibold text-gray-800">{task.name}</div>
-                        <div className="text-xs text-gray-500">
-                          {repeatTypeLabels[task.repeatType]} · +{task.starReward}⭐
-                        </div>
+            <div className="flex items-center gap-2 mb-4">
+              <History className="w-5 h-5 text-primary-500" />
+              <h3 className="font-bold text-gray-800">习惯分配历史</h3>
+            </div>
+
+            {taskAssignmentHistory.length === 0 ? (
+              <p className="text-center text-gray-500 py-4">暂无分配记录</p>
+            ) : (
+              <div className="space-y-3">
+                {taskAssignmentHistory.slice(0, 10).map((item, idx) => (
+                  <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                    <div className={clsx(
+                      'w-8 h-8 rounded-full flex items-center justify-center',
+                      item.action === 'assigned' ? 'bg-success-100' : 'bg-red-100'
+                    )}>
+                      {item.action === 'assigned' ? (
+                        <Plus className="w-4 h-4 text-success-600" />
+                      ) : (
+                        <Minus className="w-4 h-4 text-red-600" />
+                      )}
+                    </div>
+                    <span className="text-2xl">{item.taskIcon}</span>
+                    <div className="flex-1">
+                      <div className="font-semibold text-gray-800">{item.taskName}</div>
+                      <div className="text-xs text-gray-500">
+                        {item.action === 'assigned' ? '已分配' : '已移除'} · {item.date}
                       </div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            )}
           </Card>
+        )}
+
+        {activeTab === 'stars' && (
+          <>
+            <Card className="bg-gradient-to-r from-gold-50 to-yellow-50 border-2 border-gold-200">
+              <div className="text-center mb-4">
+                <div className="text-5xl font-bold text-gold-600 mb-2">⭐ {totalStars}</div>
+                <p className="text-sm text-gray-600">当前星星余额</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="text-center p-3 bg-white/60 rounded-lg">
+                  <div className="text-xl font-bold text-success-600">
+                    +{starHistory.filter(s => s.type === 'earned').reduce((sum, s) => sum + s.delta, 0)}
+                  </div>
+                  <div className="text-xs text-gray-600">本周获得</div>
+                </div>
+                <div className="text-center p-3 bg-white/60 rounded-lg">
+                  <div className="text-xl font-bold text-secondary-600">
+                    -{Math.abs(starHistory.filter(s => s.type === 'spent').reduce((sum, s) => sum + s.delta, 0))}
+                  </div>
+                  <div className="text-xs text-gray-600">本周消耗</div>
+                </div>
+              </div>
+            </Card>
+
+            <Card>
+              <div className="flex items-center gap-2 mb-4">
+                <TrendingUp className="w-5 h-5 text-primary-500" />
+                <h3 className="font-bold text-gray-800">最近14天变化</h3>
+              </div>
+
+              {starHistory.length === 0 ? (
+                <p className="text-center text-gray-500 py-4">暂无星星变化记录</p>
+              ) : (
+                <div className="space-y-3">
+                  {starHistory.map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                      <div className={clsx(
+                        'w-8 h-8 rounded-full flex items-center justify-center',
+                        item.type === 'earned' ? 'bg-success-100' :
+                        item.type === 'spent' ? 'bg-secondary-100' :
+                        'bg-gold-100'
+                      )}>
+                        {item.type === 'earned' ? (
+                          <TrendingUp className="w-4 h-4 text-success-600" />
+                        ) : item.type === 'spent' ? (
+                          <TrendingDown className="w-4 h-4 text-secondary-600" />
+                        ) : (
+                          <Star className="w-4 h-4 text-gold-600" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-semibold text-gray-800">{item.reason}</div>
+                        <div className="text-xs text-gray-500">{item.date}</div>
+                      </div>
+                      <div className={clsx(
+                        'text-lg font-bold',
+                        item.delta > 0 ? 'text-success-600' : 'text-secondary-600'
+                      )}>
+                        {item.delta > 0 ? '+' : ''}{item.delta}⭐
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </>
         )}
       </div>
 
@@ -468,6 +587,41 @@ export const ChildDetailPage: React.FC = () => {
               icon={<Star className="w-4 h-4" />}
             >
               确认调整
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showEncouragementModal}
+        onClose={() => setShowEncouragementModal(false)}
+        title="编辑鼓励语"
+      >
+        <div className="space-y-4">
+          <textarea
+            value={encouragementText}
+            onChange={(e) => setEncouragementText(e.target.value)}
+            placeholder="写下你想对孩子说的话..."
+            className="input min-h-[120px] resize-none"
+            maxLength={200}
+          />
+          <div className="text-xs text-gray-400 text-right">
+            {encouragementText.length}/200
+          </div>
+          <div className="flex gap-3">
+            <Button
+              variant="ghost"
+              onClick={() => setShowEncouragementModal(false)}
+              className="flex-1"
+            >
+              取消
+            </Button>
+            <Button
+              onClick={handleSaveEncouragement}
+              className="flex-1"
+              icon={<MessageCircle className="w-4 h-4" />}
+            >
+              保存鼓励语
             </Button>
           </div>
         </div>

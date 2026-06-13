@@ -19,6 +19,9 @@ import type {
   EnhancedChildDetail,
   RepeatType,
   DailyTimeline,
+  StarHistory,
+  TaskAssignmentHistory,
+  PeriodComparison,
 } from '../types';
 import {
   mockFamily,
@@ -95,10 +98,14 @@ interface AppState {
   
   assignTaskToChild: (taskId: string, childId: string) => void;
   unassignTaskFromChild: (taskId: string, childId: string) => void;
-  adjustStars: (userId: string, delta: number) => void;
+  adjustStars: (userId: string, delta: number, reason?: string) => void;
   
   getAllCheckInHistory: (userId: string) => CheckIn[];
   getAllRedemptionHistory: (userId: string) => Redemption[];
+  getPeriodComparison: (userId: string, period: 'week' | 'month', monthType?: 'calendar' | 'rolling') => PeriodComparison;
+  getStarHistory: (userId: string, days?: number) => StarHistory[];
+  getTaskAssignmentHistory: (userId: string) => TaskAssignmentHistory[];
+  setChildEncouragement: (userId: string, message: string) => void;
 }
 
 export const useStore = create<AppState>()(
@@ -686,9 +693,14 @@ export const useStore = create<AppState>()(
           (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
         
+        const user = get().users.find(u => u.id === userId);
+        
         return {
           ...baseDetail,
           allTasks,
+          starHistory: get().getStarHistory(userId, 14),
+          taskAssignmentHistory: get().getTaskAssignmentHistory(userId),
+          encouragement: user?.encouragement,
           pendingApprovals: [
             ...userCheckIns.filter(c => c.status === 'pending'),
             ...userRedemptions.filter(r => r.status === 'pending'),
@@ -750,6 +762,183 @@ export const useStore = create<AppState>()(
         return get().getRedemptionsForUser(userId).sort(
           (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
+      },
+
+      getPeriodComparison: (userId, period, monthType = 'calendar') => {
+        const current = get().getEnhancedReport(userId, period, monthType);
+        
+        const today = new Date();
+        today.setHours(23, 59, 59, 999);
+        
+        let previousStartDate: Date;
+        let previousEndDate: Date;
+        
+        if (period === 'week') {
+          previousEndDate = new Date(today);
+          previousEndDate.setDate(today.getDate() - today.getDay() - 1);
+          previousStartDate = new Date(previousEndDate);
+          previousStartDate.setDate(previousEndDate.getDate() - 6);
+        } else {
+          if (monthType === 'calendar') {
+            previousEndDate = new Date(today.getFullYear(), today.getMonth(), 0);
+            previousStartDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+          } else {
+            previousEndDate = new Date(today);
+            previousEndDate.setDate(today.getDate() - 30);
+            previousStartDate = new Date(today);
+            previousStartDate.setDate(today.getDate() - 60);
+          }
+        }
+        
+        let previous: EnhancedReport | null = null;
+        
+        const tasks = get().getTasksForUser(userId);
+        const checkIns = get().getCheckInsForUser(userId);
+        const redemptions = get().getRedemptionsForUser(userId);
+        
+        const prevPeriodCheckIns = checkIns.filter(c => {
+          const date = new Date(c.checkInDate);
+          return date >= previousStartDate && date <= previousEndDate;
+        });
+        
+        const prevApprovedCheckIns = prevPeriodCheckIns.filter(c => c.status === 'approved');
+        
+        let prevTotalExpected = 0;
+        prevApprovedCheckIns.forEach(() => prevTotalExpected++);
+        
+        const prevPeriodRedemptions = redemptions.filter(r => {
+          const date = new Date(r.createdAt);
+          return date >= previousStartDate && date <= previousEndDate;
+        });
+        
+        const prevTotalStarsEarned = prevApprovedCheckIns.reduce((sum, c) => sum + c.starsEarned, 0);
+        const prevTotalStarsSpent = prevPeriodRedemptions
+          .filter(r => r.status === 'approved')
+          .reduce((sum, r) => sum + r.starsSpent, 0);
+        
+        const prevDaysCount = Math.ceil(
+          (previousEndDate.getTime() - previousStartDate.getTime()) / (1000 * 60 * 60 * 24)
+        ) + 1;
+        
+        const prevStreakTrend = get().getStreakTrend(userId, prevDaysCount);
+        const prevStreakDays = prevStreakTrend.length > 0 
+          ? Math.max(...prevStreakTrend.map(t => t.streakCount)) 
+          : 0;
+        
+        previous = {
+          period,
+          monthType,
+          startDate: previousStartDate.toISOString().split('T')[0],
+          endDate: previousEndDate.toISOString().split('T')[0],
+          overallRate: prevTotalExpected > 0 
+            ? Math.round((prevApprovedCheckIns.length / prevTotalExpected) * 100) 
+            : 0,
+          byRepeatType: current.byRepeatType,
+          taskBreakdown: [],
+          streakTrend: prevStreakTrend,
+          dailyTimeline: [],
+          totalStarsEarned: prevTotalStarsEarned,
+          totalStarsSpent: prevTotalStarsSpent,
+          streakDays: prevStreakDays,
+        };
+        
+        return {
+          current,
+          previous,
+          rateChange: current.overallRate - (previous?.overallRate || 0),
+          starsChange: current.totalStarsEarned - (previous?.totalStarsEarned || 0),
+          streakChange: current.streakDays - (previous?.streakDays || 0),
+        };
+      },
+
+      getStarHistory: (userId, days = 7) => {
+        const history: StarHistory[] = [];
+        const checkIns = get().getCheckInsForUser(userId);
+        const redemptions = get().getRedemptionsForUser(userId);
+        const user = get().users.find(u => u.id === userId);
+        
+        const today = new Date();
+        today.setHours(23, 59, 59, 999);
+        
+        const checkInMap = new Map<string, { count: number; stars: number }>();
+        checkIns
+          .filter(c => c.status === 'approved')
+          .forEach(c => {
+            const existing = checkInMap.get(c.checkInDate) || { count: 0, stars: 0 };
+            existing.count++;
+            existing.stars += c.starsEarned;
+            checkInMap.set(c.checkInDate, existing);
+          });
+        
+        const redemptionMap = new Map<string, number>();
+        redemptions
+          .filter(r => r.status === 'approved')
+          .forEach(r => {
+            const existing = redemptionMap.get(r.createdAt.split('T')[0]) || 0;
+            redemptionMap.set(r.createdAt.split('T')[0], existing + r.starsSpent);
+          });
+        
+        for (let i = 0; i < days; i++) {
+          const date = new Date(today);
+          date.setDate(today.getDate() - i);
+          const dateStr = date.toISOString().split('T')[0];
+          
+          const checkInData = checkInMap.get(dateStr);
+          if (checkInData && checkInData.stars > 0) {
+            history.push({
+              date: dateStr,
+              delta: checkInData.stars,
+              reason: `完成${checkInData.count}个任务打卡`,
+              type: 'earned',
+            });
+          }
+          
+          const spent = redemptionMap.get(dateStr);
+          if (spent && spent > 0) {
+            history.push({
+              date: dateStr,
+              delta: -spent,
+              reason: '兑换奖励',
+              type: 'spent',
+            });
+          }
+        }
+        
+        return history.sort((a, b) => 
+          new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
+      },
+
+      getTaskAssignmentHistory: (userId) => {
+        const history: TaskAssignmentHistory[] = [];
+        const tasks = get().tasks;
+        
+        tasks.forEach(task => {
+          if (task.assignedTo.includes(userId)) {
+            history.push({
+              taskId: task.id,
+              taskName: task.name,
+              taskIcon: task.icon,
+              action: 'assigned',
+              date: task.createdAt.split('T')[0],
+            });
+          }
+        });
+        
+        return history.sort((a, b) => 
+          new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
+      },
+
+      setChildEncouragement: (userId, message) => {
+        set(state => ({
+          users: state.users.map(u =>
+            u.id === userId ? { ...u, encouragement: message } : u
+          ),
+          currentUser: state.currentUser?.id === userId
+            ? { ...state.currentUser, encouragement: message }
+            : state.currentUser,
+        }));
       },
     }),
     {

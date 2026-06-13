@@ -40,12 +40,53 @@ export const ParentTasksPage: React.FC = () => {
     icon: '⭐',
     description: '',
     repeatType: 'daily' as RepeatType,
+    repeatDays: [] as number[],
     reminderTime: '20:00',
     starReward: 2,
     requireApproval: true,
     requirePhoto: false,
     assignedTo: [] as string[],
   });
+
+  const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  const weekDaysShort = ['日', '一', '二', '三', '四', '五', '六'];
+
+  const toggleRepeatDay = (dayIndex: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      repeatDays: prev.repeatDays.includes(dayIndex)
+        ? prev.repeatDays.filter((d) => d !== dayIndex)
+        : [...prev.repeatDays, dayIndex].sort(),
+    }));
+  };
+
+  const getWeekPreview = () => {
+    if (formData.repeatType !== 'custom') return null;
+    
+    return weekDays.map((day, idx) => {
+      const isActive = formData.repeatDays.includes(idx);
+      return (
+        <div
+          key={idx}
+          className={clsx(
+            'flex-1 text-center p-2 rounded-lg transition-all',
+            isActive ? 'bg-primary-500 text-white' : 'bg-gray-100 text-gray-400'
+          )}
+        >
+          <div className="text-xs font-semibold">{weekDaysShort[idx]}</div>
+          <div className="text-lg">{isActive ? '✓' : '×'}</div>
+        </div>
+      );
+    });
+  };
+
+  const getRepeatDescription = () => {
+    if (formData.repeatType === 'custom' && formData.repeatDays.length > 0) {
+      const days = formData.repeatDays.map(d => weekDaysShort[d]).join('、');
+      return `每周${days}`;
+    }
+    return repeatTypeLabels[formData.repeatType];
+  };
 
   if (!currentUser) {
     navigate('/');
@@ -62,6 +103,7 @@ export const ParentTasksPage: React.FC = () => {
       icon: '⭐',
       description: '',
       repeatType: 'daily',
+      repeatDays: [],
       reminderTime: '20:00',
       starReward: 2,
       requireApproval: true,
@@ -78,6 +120,7 @@ export const ParentTasksPage: React.FC = () => {
       icon: task.icon,
       description: task.description,
       repeatType: task.repeatType,
+      repeatDays: task.repeatDays || [],
       reminderTime: task.reminderTime,
       starReward: task.starReward,
       requireApproval: task.requireApproval,
@@ -179,7 +222,9 @@ export const ParentTasksPage: React.FC = () => {
 
                   <div className="flex flex-wrap gap-2 mb-3">
                     <Badge variant="primary">
-                      {repeatTypeLabels[task.repeatType]}
+                      {task.repeatType === 'custom' && task.repeatDays && task.repeatDays.length > 0
+                        ? `每周${task.repeatDays.map(d => weekDaysShort[d]).join('、')}`
+                        : repeatTypeLabels[task.repeatType]}
                     </Badge>
                     <Badge variant="gold">
                       <Star className="w-3 h-3 mr-1" />
@@ -316,6 +361,52 @@ export const ParentTasksPage: React.FC = () => {
               />
             </div>
           </div>
+
+          {formData.repeatType === 'custom' && (
+            <div className="p-4 bg-blue-50 rounded-xl border-2 border-blue-200">
+              <label className="block text-sm font-semibold text-gray-700 mb-3">
+                选择重复的星期
+              </label>
+              <div className="grid grid-cols-7 gap-2 mb-3">
+                {weekDays.map((day, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => toggleRepeatDay(idx)}
+                    className={clsx(
+                      'p-3 rounded-xl text-center transition-all',
+                      formData.repeatDays.includes(idx)
+                        ? 'bg-primary-500 text-white shadow-lg'
+                        : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                    )}
+                  >
+                    <div className="text-xs font-semibold">{weekDaysShort[idx]}</div>
+                  </button>
+                ))}
+              </div>
+              
+              <div className="mt-3 pt-3 border-t border-blue-200">
+                <div className="text-sm text-gray-700 mb-2">
+                  <span className="font-semibold">本周预览：</span>
+                  {formData.repeatDays.length === 0 ? (
+                    <span className="text-gray-400">请选择至少一天</span>
+                  ) : (
+                    <span className="text-primary-600 font-semibold">
+                      {weekDaysShort.filter((_, idx) => formData.repeatDays.includes(idx)).join('、')} 会出现
+                    </span>
+                  )}
+                </div>
+                <div className="flex gap-1">
+                  {getWeekPreview()}
+                </div>
+                {formData.repeatDays.length > 0 && (
+                  <div className="mt-2 text-xs text-gray-500">
+                    每周将出现 {formData.repeatDays.length} 次
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">

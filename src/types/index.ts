@@ -7,6 +7,7 @@ export interface User {
   role: UserRole;
   familyId: string;
   stars: number;
+  encouragement?: string;
   createdAt: string;
 }
 
@@ -218,4 +219,30 @@ export interface EnhancedChildDetail extends ChildDetail {
   completedRedemptions: Redemption[];
   rejectedCheckIns: CheckIn[];
   rejectedRedemptions: Redemption[];
+  starHistory: StarHistory[];
+  taskAssignmentHistory: TaskAssignmentHistory[];
+  encouragement?: string;
+}
+
+export interface StarHistory {
+  date: string;
+  delta: number;
+  reason: string;
+  type: 'earned' | 'spent' | 'adjusted';
+}
+
+export interface TaskAssignmentHistory {
+  taskId: string;
+  taskName: string;
+  taskIcon: string;
+  action: 'assigned' | 'unassigned';
+  date: string;
+}
+
+export interface PeriodComparison {
+  current: EnhancedReport;
+  previous: EnhancedReport | null;
+  rateChange: number;
+  starsChange: number;
+  streakChange: number;
 }

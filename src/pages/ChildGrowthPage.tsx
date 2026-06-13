@@ -11,6 +11,7 @@ import {
 import { useStore } from '../store';
 import {
   TrendingUp,
+  TrendingDown,
   Calendar,
   Star,
   Award,
@@ -21,9 +22,12 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
+  Image,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { MoodPicker } from '../components/MoodPicker';
-import type { MoodType } from '../types';
+import type { MoodType, DailyTimeline } from '../types';
 import { clsx } from 'clsx';
 
 type ReportPeriod = 'week' | 'month';
@@ -36,6 +40,7 @@ export const ChildGrowthPage: React.FC = () => {
     achievements,
     addMoodRecord,
     getEnhancedReport,
+    getPeriodComparison,
   } = useStore();
 
   const [selectedPeriod, setSelectedPeriod] = useState<ReportPeriod>('week');
@@ -44,17 +49,21 @@ export const ChildGrowthPage: React.FC = () => {
   const [showMoodModal, setShowMoodModal] = useState(false);
   const [selectedMood, setSelectedMood] = useState<MoodType | undefined>();
   const [moodNote, setMoodNote] = useState('');
+  const [expandedDate, setExpandedDate] = useState<string | null>(null);
+  const [showDayDetail, setShowDayDetail] = useState(false);
+  const [selectedDayDetail, setSelectedDayDetail] = useState<DailyTimeline | null>(null);
 
   if (!currentUser) {
     navigate('/');
     return null;
   }
 
-  const report = useMemo(
-    () => getEnhancedReport(currentUser.id, selectedPeriod, monthType),
+  const comparison = useMemo(
+    () => getPeriodComparison(currentUser.id, selectedPeriod, monthType),
     [currentUser.id, selectedPeriod, monthType, useStore.getState().checkIns, useStore.getState().tasks]
   );
-
+  
+  const report = comparison.current;
   const earnedAchievements = achievements.filter((a) => a.earnedAt);
   const today = new Date();
 
@@ -203,6 +212,56 @@ export const ChildGrowthPage: React.FC = () => {
           </div>
         </Card>
 
+        {comparison.previous && (
+          <Card className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200">
+            <div className="flex items-center gap-2 mb-3">
+              <TrendingUp className="w-5 h-5 text-blue-600" />
+              <h3 className="font-bold text-blue-800">与上一周期对比</h3>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="text-center p-2 bg-white/60 rounded-lg">
+                <div className={clsx(
+                  'text-lg font-bold',
+                  comparison.rateChange > 0 ? 'text-success-600' : comparison.rateChange < 0 ? 'text-red-600' : 'text-gray-600'
+                )}>
+                  {comparison.rateChange > 0 ? '+' : ''}{comparison.rateChange}%
+                </div>
+                <div className="text-xs text-gray-600">完成率变化</div>
+              </div>
+              <div className="text-center p-2 bg-white/60 rounded-lg">
+                <div className={clsx(
+                  'text-lg font-bold',
+                  comparison.starsChange > 0 ? 'text-success-600' : comparison.starsChange < 0 ? 'text-red-600' : 'text-gray-600'
+                )}>
+                  {comparison.starsChange > 0 ? '+' : ''}{comparison.starsChange}⭐
+                </div>
+                <div className="text-xs text-gray-600">星星变化</div>
+              </div>
+              <div className="text-center p-2 bg-white/60 rounded-lg">
+                <div className={clsx(
+                  'text-lg font-bold',
+                  comparison.streakChange > 0 ? 'text-success-600' : comparison.streakChange < 0 ? 'text-red-600' : 'text-gray-600'
+                )}>
+                  {comparison.streakChange > 0 ? '+' : ''}{comparison.streakChange}天
+                </div>
+                <div className="text-xs text-gray-600">连续打卡变化</div>
+              </div>
+            </div>
+            <div className="mt-3 pt-3 border-t border-blue-200">
+              <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+                <div>
+                  <span className="font-semibold">上周期</span>
+                  {comparison.previous.startDate} ~ {comparison.previous.endDate}
+                </div>
+                <div>
+                  <span className="font-semibold">本周期</span>
+                  {report.startDate} ~ {report.endDate}
+                </div>
+              </div>
+            </div>
+          </Card>
+        )}
+
         {showTimeline && (
           <Card>
             <div className="flex items-center justify-between mb-4">
@@ -218,11 +277,31 @@ export const ChildGrowthPage: React.FC = () => {
             <div className="space-y-4 max-h-[400px] overflow-y-auto">
               {report.dailyTimeline.map((day, dayIdx) => (
                 <div key={dayIdx} className="border-b border-gray-100 pb-3 last:border-0">
-                  <div className="flex items-center gap-2 mb-2">
+                  <div 
+                    className="flex items-center gap-2 mb-2 cursor-pointer hover:bg-gray-50 p-2 -mx-2 rounded-lg"
+                    onClick={() => {
+                      if (expandedDate === day.date) {
+                        setExpandedDate(null);
+                      } else {
+                        setExpandedDate(day.date);
+                        setSelectedDayDetail(day);
+                        setShowDayDetail(true);
+                      }
+                    }}
+                  >
                     <span className="text-sm font-semibold text-gray-700">
                       {new Date(day.date).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
                     </span>
                     <span className="text-xs text-gray-500">周{weekDays[day.dayOfWeek]}</span>
+                    <div className="flex-1" />
+                    <span className="text-xs text-gray-500">
+                      {day.tasks.filter(t => t.isExpected && t.checkIn?.status === 'approved').length}/{day.tasks.filter(t => t.isExpected).length}
+                    </span>
+                    {expandedDate === day.date ? (
+                      <ChevronUp className="w-4 h-4 text-gray-400" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-gray-400" />
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     {day.tasks.filter(t => t.isExpected).map((task) => (
@@ -465,6 +544,89 @@ export const ChildGrowthPage: React.FC = () => {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={showDayDetail}
+        onClose={() => {
+          setShowDayDetail(false);
+          setSelectedDayDetail(null);
+          setExpandedDate(null);
+        }}
+        title={selectedDayDetail ? `${new Date(selectedDayDetail.date).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })} 周${weekDays[selectedDayDetail.dayOfWeek]} 打卡详情` : '打卡详情'}
+      >
+        {selectedDayDetail && (
+          <div className="space-y-4">
+            {selectedDayDetail.tasks.filter(t => t.isExpected).length === 0 ? (
+              <p className="text-center text-gray-500 py-8">当天没有安排任务</p>
+            ) : (
+              selectedDayDetail.tasks.filter(t => t.isExpected).map((task) => (
+                <div key={task.taskId} className="p-4 bg-gray-50 rounded-xl">
+                  <div className="flex items-start gap-3 mb-3">
+                    <span className="text-3xl">{task.taskIcon}</span>
+                    <div className="flex-1">
+                      <div className="font-bold text-gray-800 mb-1">{task.taskName}</div>
+                      <div className={clsx(
+                        'inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full',
+                        task.checkIn?.status === 'approved' ? 'bg-success-100 text-success-700' :
+                        task.checkIn?.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                        task.checkIn?.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-gray-200 text-gray-600'
+                      )}>
+                        {task.checkIn?.status === 'approved' && <CheckCircle2 className="w-3 h-3" />}
+                        {task.checkIn?.status === 'rejected' && <XCircle className="w-3 h-3" />}
+                        {task.checkIn?.status === 'pending' && <Clock className="w-3 h-3" />}
+                        {task.checkIn?.status === 'approved' ? '已通过' :
+                         task.checkIn?.status === 'rejected' ? '已退回' :
+                         task.checkIn?.status === 'pending' ? '待审批' : '未打卡'}
+                      </div>
+                    </div>
+                    {task.checkIn && (
+                      <div className="text-right">
+                        <div className="text-gold-600 font-bold">+{task.checkIn.starsEarned}⭐</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {task.checkIn ? (
+                    <div className="space-y-3">
+                      {task.checkIn.content && (
+                        <div>
+                          <div className="text-xs text-gray-500 mb-1">打卡内容</div>
+                          <div className="text-sm text-gray-700 bg-white p-2 rounded">
+                            {task.checkIn.content}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {task.checkIn.photo && (
+                        <div>
+                          <div className="text-xs text-gray-500 mb-1">打卡照片</div>
+                          <img 
+                            src={task.checkIn.photo} 
+                            alt="打卡照片" 
+                            className="w-full h-48 object-cover rounded-lg"
+                          />
+                        </div>
+                      )}
+
+                      {task.checkIn.approvedAt && (
+                        <div className="text-xs text-gray-400">
+                          审批时间: {new Date(task.checkIn.approvedAt).toLocaleString('zh-CN')}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center text-gray-400 py-4">
+                      <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">当天未打卡</p>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </Modal>
 
       <BottomNav role="child" />
