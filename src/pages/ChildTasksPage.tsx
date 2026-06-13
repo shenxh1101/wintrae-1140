@@ -9,7 +9,7 @@ import { EncouragementBubble } from '../components/EncouragementBubble';
 
 export const ChildTasksPage: React.FC = () => {
   const navigate = useNavigate();
-  const { currentUser, getTodayTasks, checkIns, addCheckIn, tasks } = useStore();
+  const { currentUser, getTodayTasks, addCheckIn, tasks, getEffectiveCheckIn } = useStore();
 
   const [showCheckInModal, setShowCheckInModal] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -29,9 +29,7 @@ export const ChildTasksPage: React.FC = () => {
   const todayDate = new Date().toISOString().split('T')[0];
 
   const getCheckInForTask = (taskId: string) => {
-    return checkIns.find(
-      (c) => c.taskId === taskId && c.userId === currentUser.id && c.checkInDate === todayDate
-    );
+    return getEffectiveCheckIn(currentUser.id, taskId, todayDate);
   };
 
   const selectedTask = useMemo(() => {

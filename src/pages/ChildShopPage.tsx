@@ -1,27 +1,27 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Header, BottomNav, RewardCard, Modal, Button, Card } from '../components';
+import { Header, BottomNav, Card, Modal, Button, Badge } from '../components';
 import { useStore } from '../store';
 import type { Reward } from '../types';
-import { Gift, Clock, CheckCircle2 } from 'lucide-react';
+import { Gift, Clock, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import { encouragementMessages } from '../data/mockData';
 import { EncouragementBubble } from '../components/EncouragementBubble';
+import { clsx } from 'clsx';
 
 export const ChildShopPage: React.FC = () => {
   const navigate = useNavigate();
   const {
     currentUser,
     rewards,
-    redemptions,
     addRedemption,
     deductStars,
+    getLatestRedemptionsForReward,
   } = useStore();
 
   const [selectedReward, setSelectedReward] = useState<Reward | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showEncouragement, setShowEncouragement] = useState(false);
-  const [encouragementMessage, setEncouragementMessage] = useState('');
 
   if (!currentUser) {
     navigate('/');
@@ -29,13 +29,10 @@ export const ChildShopPage: React.FC = () => {
   }
 
   const activeRewards = rewards.filter((r) => r.isActive);
-  const userRedemptions = redemptions.filter(
-    (r) => r.userId === currentUser.id
-  );
 
-  const pendingRedemptions = userRedemptions.filter(
-    (r) => r.status === 'pending'
-  );
+  const getRewardStatus = (rewardId: string) => {
+    return getLatestRedemptionsForReward(currentUser.id, rewardId);
+  };
 
   const currentUserStars = useMemo(() => {
     const user = useStore.getState().users.find(u => u.id === currentUser.id);
@@ -66,40 +63,48 @@ export const ChildShopPage: React.FC = () => {
 
     setTimeout(() => {
       setShowSuccessModal(false);
-      const messages = encouragementMessages.rewardRedeemed;
-      const randomMessage = messages[Math.floor(Math.random() * messages.length)];
-      setEncouragementMessage(randomMessage);
-      setShowEncouragement(true);
     }, 2000);
+  };
+
+  const getStatusBadge = (status: string | undefined) => {
+    if (!status) return null;
+
+    switch (status) {
+      case 'pending':
+        return (
+          <Badge variant="secondary" size="sm" className="flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            待审批
+          </Badge>
+        );
+      case 'approved':
+        return (
+          <Badge variant="success" size="sm" className="flex items-center gap-1">
+            <CheckCircle2 className="w-3 h-3" />
+            已通过
+          </Badge>
+        );
+      case 'rejected':
+        return (
+          <Badge variant="danger" size="sm" className="flex items-center gap-1">
+            <XCircle className="w-3 h-3" />
+            已拒绝
+          </Badge>
+        );
+      default:
+        return null;
+    }
   };
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
-      <Header
-        title="奖励商店"
-        user={currentUser}
-        showStars
-      />
+      <Header title="奖励商店" user={currentUser} showStars />
 
       <div className="container mx-auto px-4 py-6">
-        {pendingRedemptions.length > 0 && (
-          <Card className="mb-6 bg-gradient-to-r from-primary-50 to-secondary-50 border-2 border-primary-200">
-            <div className="flex items-center gap-3 mb-3">
-              <Clock className="w-6 h-6 text-primary-600" />
-              <h3 className="font-bold text-gray-800">
-                待审批的兑换 ({pendingRedemptions.length})
-              </h3>
-            </div>
-            <p className="text-sm text-gray-600">
-              你的兑换申请正在等待爸爸妈妈审批中...
-            </p>
-          </Card>
-        )}
-
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-2">
             <Gift className="w-6 h-6 text-primary-500" />
-            <h2 className="text-xl font-bold text-gray-800">可用奖励</h2>
+            <h2 className="text-xl font-bold text-gray-800">奖励商店</h2>
           </div>
           <p className="text-sm text-gray-600">
             用你努力的星星换取喜欢的奖励吧！
@@ -107,14 +112,67 @@ export const ChildShopPage: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          {activeRewards.map((reward) => (
-            <RewardCard
-              key={reward.id}
-              reward={reward}
-              userStars={currentUserStars}
-              onRedeem={() => handleRedeem(reward)}
-            />
-          ))}
+          {activeRewards.map((reward) => {
+            const status = getRewardStatus(reward.id);
+            const canAfford = currentUserStars >= reward.starCost;
+            const isPending = status?.status === 'pending';
+            const isRejected = status?.status === 'rejected';
+
+            return (
+              <Card key={reward.id} className="relative overflow-hidden">
+                {status && (
+                  <div className="absolute top-2 right-2">
+                    {getStatusBadge(status.status)}
+                  </div>
+                )}
+
+                <div className="text-5xl mb-3 text-center pt-4">{reward.image}</div>
+
+                <div className="text-center">
+                  <h3 className="font-bold text-lg text-gray-800 mb-1">{reward.name}</h3>
+                  <p className="text-sm text-gray-600 mb-3">{reward.description}</p>
+
+                  <div className="flex items-center justify-center gap-1 mb-3">
+                    <span className="text-gold-500">⭐</span>
+                    <span className="text-2xl font-bold text-gold-600">
+                      {reward.starCost}
+                    </span>
+                  </div>
+
+                  {isPending ? (
+                    <div className="text-sm text-secondary-600 font-semibold py-2">
+                      等待爸爸妈妈审批中...
+                    </div>
+                  ) : isRejected ? (
+                    <Button
+                      onClick={() => handleRedeem(reward)}
+                      className="w-full"
+                      size="sm"
+                      icon={<AlertCircle className="w-4 h-4" />}
+                    >
+                      重新兑换
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={() => handleRedeem(reward)}
+                      disabled={!canAfford}
+                      className="w-full"
+                      size="sm"
+                      icon={canAfford ? <Gift className="w-4 h-4" /> : undefined}
+                    >
+                      {canAfford ? '立即兑换' : '星星不足'}
+                    </Button>
+                  )}
+
+                  {!canAfford && !isPending && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      还差 {reward.starCost - currentUserStars} 颗星星
+                    </p>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
         </div>
 
         {activeRewards.length === 0 && (
@@ -177,13 +235,13 @@ export const ChildShopPage: React.FC = () => {
         <div className="text-center py-4">
           <div className="text-6xl mb-4 animate-bounce">🎉</div>
           <h3 className="text-2xl font-bold text-gray-800 mb-2">
-            兑换成功！
+            兑换申请已提交！
           </h3>
           <p className="text-gray-600">
-            你的兑换申请已提交，等待爸爸妈妈审批~
+            等待爸爸妈妈审批~
           </p>
           <div className="mt-6 flex justify-center">
-            <CheckCircle2 className="w-16 h-16 text-success-500" />
+            <Clock className="w-16 h-16 text-secondary-500" />
           </div>
         </div>
       </Modal>

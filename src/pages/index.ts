@@ -7,3 +7,4 @@ export { ParentTasksPage } from './ParentTasksPage';
 export { ParentRewardsPage } from './ParentRewardsPage';
 export { ParentApprovePage } from './ParentApprovePage';
 export { ParentSettingsPage } from './ParentSettingsPage';
+export { ChildDetailPage } from './ChildDetailPage';

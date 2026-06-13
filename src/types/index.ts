@@ -148,8 +148,48 @@ export interface TaskStats {
   taskId: string;
   taskName: string;
   taskIcon: string;
+  repeatType: RepeatType;
   completedCount: number;
   totalCount: number;
   starsEarned: number;
   completionRate: number;
+}
+
+export interface StreakDay {
+  date: string;
+  completed: boolean;
+}
+
+export interface StreakTrend {
+  date: string;
+  streakCount: number;
+  isCompleted: boolean;
+}
+
+export interface ChildDetail {
+  user: User;
+  assignedTasks: Task[];
+  totalStars: number;
+  lastCheckIn?: CheckIn;
+  lastRedemption?: Redemption;
+  recentCheckIns: CheckIn[];
+  recentRedemptions: Redemption[];
+}
+
+export interface EnhancedReport {
+  period: 'week' | 'month';
+  startDate: string;
+  endDate: string;
+  overallRate: number;
+  byRepeatType: {
+    daily: { total: number; completed: number; rate: number };
+    weekdays: { total: number; completed: number; rate: number };
+    weekends: { total: number; completed: number; rate: number };
+    custom: { total: number; completed: number; rate: number };
+  };
+  taskBreakdown: TaskStats[];
+  streakTrend: StreakTrend[];
+  totalStarsEarned: number;
+  totalStarsSpent: number;
+  streakDays: number;
 }

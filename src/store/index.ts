@@ -12,9 +12,11 @@ import type {
   TemporaryChallenge,
   AppSettings,
   UserRole,
-  WeeklyReport,
-  MonthlyReport,
   TaskStats,
+  StreakTrend,
+  ChildDetail,
+  EnhancedReport,
+  RepeatType,
 } from '../types';
 import {
   mockFamily,
@@ -81,9 +83,12 @@ interface AppState {
   addChild: (name: string, avatar: string) => User;
   updateUser: (id: string, updates: Partial<User>) => void;
   
-  getUserWeeklyReport: (userId: string) => WeeklyReport;
-  getUserMonthlyReport: (userId: string) => MonthlyReport;
-  getUserTaskStats: (userId: string) => TaskStats[];
+  getEnhancedReport: (userId: string, period: 'week' | 'month') => EnhancedReport;
+  getStreakTrend: (userId: string, days: number) => StreakTrend[];
+  getChildDetail: (userId: string) => ChildDetail;
+  
+  getEffectiveCheckIn: (userId: string, taskId: string, date: string) => CheckIn | undefined;
+  getLatestRedemptionsForReward: (userId: string, rewardId: string) => Redemption | undefined;
 }
 
 export const useStore = create<AppState>()(
@@ -407,121 +412,210 @@ export const useStore = create<AppState>()(
         }));
       },
 
-      getUserWeeklyReport: (userId) => {
-        const tasks = get().getTasksForUser(userId);
-        const checkIns = get().getCheckInsForUser(userId).filter(c => c.status === 'approved');
+      getEffectiveCheckIn: (userId, taskId, date) => {
+        const checkIns = get().checkIns.filter(
+          c => c.userId === userId && c.taskId === taskId && c.checkInDate === date
+        );
+        if (checkIns.length === 0) return undefined;
+        return checkIns.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        )[0];
+      },
+
+      getLatestRedemptionsForReward: (userId, rewardId) => {
+        const redemptions = get().redemptions.filter(
+          r => r.userId === userId && r.rewardId === rewardId
+        );
+        if (redemptions.length === 0) return undefined;
+        return redemptions.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        )[0];
+      },
+
+      getStreakTrend: (userId, days) => {
+        const checkIns = get().getCheckInsForUser(userId)
+          .filter(c => c.status === 'approved')
+          .sort((a, b) => new Date(b.checkInDate).getTime() - new Date(a.checkInDate).getTime());
         
+        const trend: StreakTrend[] = [];
         const today = new Date();
-        const weekStart = new Date(today);
-        weekStart.setDate(today.getDate() - today.getDay());
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekStart.getDate() + 6);
+        today.setHours(0, 0, 0, 0);
+        
+        let currentStreak = 0;
+        const completedDates = new Set(checkIns.map(c => c.checkInDate));
+        
+        for (let i = days - 1; i >= 0; i--) {
+          const date = new Date(today);
+          date.setDate(today.getDate() - i);
+          const dateStr = date.toISOString().split('T')[0];
+          
+          const isCompleted = completedDates.has(dateStr);
+          
+          if (isCompleted) {
+            currentStreak++;
+          } else {
+            currentStreak = 0;
+          }
+          
+          trend.push({
+            date: dateStr,
+            streakCount: currentStreak,
+            isCompleted,
+          });
+        }
+        
+        return trend;
+      },
 
-        const weekCheckIns = checkIns.filter(c => {
-          const date = new Date(c.checkInDate);
-          return date >= weekStart && date <= today;
-        });
-
-        const taskBreakdown = tasks.map(task => {
-          const completed = weekCheckIns.filter(c => c.taskId === task.id).length;
-          const daysInWeek = 7;
+      getChildDetail: (userId) => {
+        const user = get().users.find(u => u.id === userId);
+        if (!user) {
           return {
-            taskId: task.id,
-            taskName: task.name,
-            completed,
-            totalCount: daysInWeek,
+            user: user!,
+            assignedTasks: [],
+            totalStars: 0,
+            recentCheckIns: [],
+            recentRedemptions: [],
           };
-        });
-
-        const totalExpected = tasks.length * 7;
-        const completedTasks = weekCheckIns.length;
-        const completionRate = totalExpected > 0 ? Math.round((completedTasks / totalExpected) * 100) : 0;
-        const starsEarned = weekCheckIns.reduce((sum, c) => sum + c.starsEarned, 0);
-        const streakDays = get().getStreakDays(userId);
-
+        }
+        
+        const assignedTasks = get().tasks.filter(
+          t => t.isActive && t.assignedTo.includes(userId)
+        );
+        
+        const userCheckIns = get().checkIns
+          .filter(c => c.userId === userId)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        
+        const userRedemptions = get().redemptions
+          .filter(r => r.userId === userId)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        
         return {
-          weekStart: weekStart.toISOString().split('T')[0],
-          weekEnd: weekEnd.toISOString().split('T')[0],
-          totalTasks: tasks.length,
-          completedTasks,
-          completionRate,
-          starsEarned,
-          streakDays,
-          taskBreakdown: taskBreakdown.map(tb => ({
-            taskId: tb.taskId,
-            taskName: tb.taskName,
-            completed: tb.completed,
-          })),
+          user,
+          assignedTasks,
+          totalStars: user.stars,
+          lastCheckIn: userCheckIns[0],
+          lastRedemption: userRedemptions.find(r => r.status === 'approved'),
+          recentCheckIns: userCheckIns.slice(0, 5),
+          recentRedemptions: userRedemptions.slice(0, 5),
         };
       },
 
-      getUserMonthlyReport: (userId) => {
+      getEnhancedReport: (userId, period) => {
         const tasks = get().getTasksForUser(userId);
-        const checkIns = get().getCheckInsForUser(userId).filter(c => c.status === 'approved');
+        const checkIns = get().getCheckInsForUser(userId);
         const redemptions = get().getRedemptionsForUser(userId);
         
         const today = new Date();
-        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        today.setHours(23, 59, 59, 999);
         
-        const monthCheckIns = checkIns.filter(c => {
+        let startDate: Date;
+        let daysCount: number;
+        
+        if (period === 'week') {
+          startDate = new Date(today);
+          startDate.setDate(today.getDate() - today.getDay());
+          startDate.setHours(0, 0, 0, 0);
+          daysCount = 7;
+        } else {
+          startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+          const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+          daysCount = Math.min(30, endOfMonth.getDate());
+        }
+        
+        const periodCheckIns = checkIns.filter(c => {
           const date = new Date(c.checkInDate);
-          return date >= monthStart && date <= today;
+          return date >= startDate && date <= today;
         });
-
-        const monthRedemptions = redemptions.filter(r => {
-          const date = new Date(r.createdAt);
-          return date >= monthStart && date <= today;
-        });
-
-        const totalExpected = tasks.length * 30;
-        const completedTasks = monthCheckIns.length;
-        const completionRate = totalExpected > 0 ? Math.round((completedTasks / totalExpected) * 100) : 0;
-        const totalStarsEarned = monthCheckIns.reduce((sum, c) => sum + c.starsEarned, 0);
-        const totalStarsSpent = monthRedemptions
-          .filter(r => r.status === 'approved')
-          .reduce((sum, r) => sum + r.starsSpent, 0);
-        const streakDays = get().getStreakDays(userId);
-
-        return {
-          month: today.toLocaleDateString('zh-CN', { month: 'long' }),
-          year: today.getFullYear(),
-          totalTasks: tasks.length,
-          completedTasks,
-          completionRate,
-          totalStarsEarned,
-          totalStarsSpent,
-          streakDays,
-          achievements: get().achievements.filter(a => a.earnedAt),
-        };
-      },
-
-      getUserTaskStats: (userId) => {
-        const tasks = get().getTasksForUser(userId);
-        const checkIns = get().getCheckInsForUser(userId).filter(c => c.status === 'approved');
         
-        return tasks.map(task => {
-          const taskCheckIns = checkIns.filter(c => c.taskId === task.id);
-          const completedCount = taskCheckIns.length;
-          const starsEarned = taskCheckIns.reduce((sum, c) => sum + c.starsEarned, 0);
+        const approvedCheckIns = periodCheckIns.filter(c => c.status === 'approved');
+        
+        const byRepeatType = {
+          daily: { total: 0, completed: 0, rate: 0 },
+          weekdays: { total: 0, completed: 0, rate: 0 },
+          weekends: { total: 0, completed: 0, rate: 0 },
+          custom: { total: 0, completed: 0, rate: 0 },
+        };
+        
+        tasks.forEach(task => {
+          const repeatType = task.repeatType as RepeatType;
+          let expectedDays = 0;
           
-          const today = new Date();
-          const thirtyDaysAgo = new Date(today);
-          thirtyDaysAgo.setDate(today.getDate() - 30);
+          for (let i = 0; i < daysCount; i++) {
+            const date = new Date(startDate);
+            date.setDate(startDate.getDate() + i);
+            const dayOfWeek = date.getDay();
+            
+            if (task.repeatType === 'daily') {
+              expectedDays++;
+            } else if (task.repeatType === 'weekdays') {
+              if (dayOfWeek >= 1 && dayOfWeek <= 5) expectedDays++;
+            } else if (task.repeatType === 'weekends') {
+              if (dayOfWeek === 0 || dayOfWeek === 6) expectedDays++;
+            } else if (task.repeatType === 'custom' && task.repeatDays) {
+              if (task.repeatDays.includes(dayOfWeek)) expectedDays++;
+            }
+          }
           
-          const recentCheckIns = taskCheckIns.filter(c => {
-            return new Date(c.checkInDate) >= thirtyDaysAgo;
-          });
+          byRepeatType[repeatType].total += expectedDays;
+          
+          const taskApprovedCheckIns = approvedCheckIns.filter(c => c.taskId === task.id);
+          byRepeatType[repeatType].completed += taskApprovedCheckIns.length;
+        });
+        
+        Object.keys(byRepeatType).forEach(key => {
+          const data = byRepeatType[key as keyof typeof byRepeatType];
+          data.rate = data.total > 0 ? Math.round((data.completed / data.total) * 100) : 0;
+        });
+        
+        const totalExpected = Object.values(byRepeatType).reduce((sum, d) => sum + d.total, 0);
+        const totalCompleted = Object.values(byRepeatType).reduce((sum, d) => sum + d.completed, 0);
+        
+        const taskBreakdown: TaskStats[] = tasks.map(task => {
+          const taskApprovedCheckIns = approvedCheckIns.filter(c => c.taskId === task.id);
+          const completedCount = taskApprovedCheckIns.length;
+          const starsEarned = taskApprovedCheckIns.reduce((sum, c) => sum + c.starsEarned, 0);
+          
+          let taskExpected = byRepeatType[task.repeatType as RepeatType].total / tasks.filter(t => t.repeatType === task.repeatType).length;
+          if (taskExpected === 0) taskExpected = daysCount;
           
           return {
             taskId: task.id,
             taskName: task.name,
             taskIcon: task.icon,
-            completedCount: recentCheckIns.length,
-            totalCount: 30,
+            repeatType: task.repeatType,
+            completedCount,
+            totalCount: Math.round(taskExpected),
             starsEarned,
-            completionRate: Math.round((recentCheckIns.length / 30) * 100),
+            completionRate: taskExpected > 0 ? Math.round((completedCount / taskExpected) * 100) : 0,
           };
         });
+        
+        const streakTrend = get().getStreakTrend(userId, daysCount);
+        
+        const periodRedemptions = redemptions.filter(r => {
+          const date = new Date(r.createdAt);
+          return date >= startDate && date <= today;
+        });
+        
+        const totalStarsEarned = approvedCheckIns.reduce((sum, c) => sum + c.starsEarned, 0);
+        const totalStarsSpent = periodRedemptions
+          .filter(r => r.status === 'approved')
+          .reduce((sum, r) => sum + r.starsSpent, 0);
+        
+        return {
+          period,
+          startDate: startDate.toISOString().split('T')[0],
+          endDate: today.toISOString().split('T')[0],
+          overallRate: totalExpected > 0 ? Math.round((totalCompleted / totalExpected) * 100) : 0,
+          byRepeatType,
+          taskBreakdown,
+          streakTrend,
+          totalStarsEarned,
+          totalStarsSpent,
+          streakDays: get().getStreakDays(userId),
+        };
       },
     }),
     {

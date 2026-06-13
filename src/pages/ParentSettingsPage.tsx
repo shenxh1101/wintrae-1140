@@ -153,7 +153,8 @@ export const ParentSettingsPage: React.FC = () => {
             {children.map((child) => (
               <div
                 key={child.id}
-                className="p-3 bg-gray-50 rounded-xl flex items-center gap-3"
+                className="p-3 bg-gray-50 rounded-xl flex items-center gap-3 cursor-pointer hover:bg-gray-100 transition-colors"
+                onClick={() => navigate(`/parent/child/${child.id}`)}
               >
                 <Avatar emoji={child.avatar} size="md" />
                 <div className="flex-1">
@@ -161,7 +162,10 @@ export const ParentSettingsPage: React.FC = () => {
                   <div className="text-sm text-gold-600">⭐ {child.stars} 颗星星</div>
                 </div>
                 <button
-                  onClick={() => handleEditChild(child)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleEditChild(child);
+                  }}
                   className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-colors"
                 >
                   <Edit2 className="w-4 h-4 text-gray-600" />
