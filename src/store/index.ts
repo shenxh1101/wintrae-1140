@@ -12,6 +12,9 @@ import type {
   TemporaryChallenge,
   AppSettings,
   UserRole,
+  WeeklyReport,
+  MonthlyReport,
+  TaskStats,
 } from '../types';
 import {
   mockFamily,
@@ -74,6 +77,13 @@ interface AppState {
 
   addTemporaryChallenge: (challenge: Omit<TemporaryChallenge, 'id' | 'createdAt'>) => void;
   earnAchievement: (achievementId: string) => void;
+  
+  addChild: (name: string, avatar: string) => User;
+  updateUser: (id: string, updates: Partial<User>) => void;
+  
+  getUserWeeklyReport: (userId: string) => WeeklyReport;
+  getUserMonthlyReport: (userId: string) => MonthlyReport;
+  getUserTaskStats: (userId: string) => TaskStats[];
 }
 
 export const useStore = create<AppState>()(
@@ -283,6 +293,9 @@ export const useStore = create<AppState>()(
           users: state.users.map((u) =>
             u.id === userId ? { ...u, stars: u.stars + stars } : u
           ),
+          currentUser: state.currentUser?.id === userId
+            ? { ...state.currentUser, stars: state.currentUser.stars + stars }
+            : state.currentUser,
         }));
       },
 
@@ -294,6 +307,9 @@ export const useStore = create<AppState>()(
           users: state.users.map((u) =>
             u.id === userId ? { ...u, stars: u.stars - stars } : u
           ),
+          currentUser: state.currentUser?.id === userId
+            ? { ...state.currentUser, stars: state.currentUser.stars - stars }
+            : state.currentUser,
         }));
         return true;
       },
@@ -366,6 +382,146 @@ export const useStore = create<AppState>()(
               : a
           ),
         }));
+      },
+
+      addChild: (name, avatar) => {
+        const family = get().family;
+        const newChild: User = {
+          id: `child-${Date.now()}`,
+          name,
+          avatar,
+          role: 'child',
+          familyId: family.id,
+          stars: 0,
+          createdAt: new Date().toISOString(),
+        };
+        set((state) => ({ users: [...state.users, newChild] }));
+        return newChild;
+      },
+
+      updateUser: (id, updates) => {
+        set((state) => ({
+          users: state.users.map((u) =>
+            u.id === id ? { ...u, ...updates } : u
+          ),
+        }));
+      },
+
+      getUserWeeklyReport: (userId) => {
+        const tasks = get().getTasksForUser(userId);
+        const checkIns = get().getCheckInsForUser(userId).filter(c => c.status === 'approved');
+        
+        const today = new Date();
+        const weekStart = new Date(today);
+        weekStart.setDate(today.getDate() - today.getDay());
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+
+        const weekCheckIns = checkIns.filter(c => {
+          const date = new Date(c.checkInDate);
+          return date >= weekStart && date <= today;
+        });
+
+        const taskBreakdown = tasks.map(task => {
+          const completed = weekCheckIns.filter(c => c.taskId === task.id).length;
+          const daysInWeek = 7;
+          return {
+            taskId: task.id,
+            taskName: task.name,
+            completed,
+            totalCount: daysInWeek,
+          };
+        });
+
+        const totalExpected = tasks.length * 7;
+        const completedTasks = weekCheckIns.length;
+        const completionRate = totalExpected > 0 ? Math.round((completedTasks / totalExpected) * 100) : 0;
+        const starsEarned = weekCheckIns.reduce((sum, c) => sum + c.starsEarned, 0);
+        const streakDays = get().getStreakDays(userId);
+
+        return {
+          weekStart: weekStart.toISOString().split('T')[0],
+          weekEnd: weekEnd.toISOString().split('T')[0],
+          totalTasks: tasks.length,
+          completedTasks,
+          completionRate,
+          starsEarned,
+          streakDays,
+          taskBreakdown: taskBreakdown.map(tb => ({
+            taskId: tb.taskId,
+            taskName: tb.taskName,
+            completed: tb.completed,
+          })),
+        };
+      },
+
+      getUserMonthlyReport: (userId) => {
+        const tasks = get().getTasksForUser(userId);
+        const checkIns = get().getCheckInsForUser(userId).filter(c => c.status === 'approved');
+        const redemptions = get().getRedemptionsForUser(userId);
+        
+        const today = new Date();
+        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        
+        const monthCheckIns = checkIns.filter(c => {
+          const date = new Date(c.checkInDate);
+          return date >= monthStart && date <= today;
+        });
+
+        const monthRedemptions = redemptions.filter(r => {
+          const date = new Date(r.createdAt);
+          return date >= monthStart && date <= today;
+        });
+
+        const totalExpected = tasks.length * 30;
+        const completedTasks = monthCheckIns.length;
+        const completionRate = totalExpected > 0 ? Math.round((completedTasks / totalExpected) * 100) : 0;
+        const totalStarsEarned = monthCheckIns.reduce((sum, c) => sum + c.starsEarned, 0);
+        const totalStarsSpent = monthRedemptions
+          .filter(r => r.status === 'approved')
+          .reduce((sum, r) => sum + r.starsSpent, 0);
+        const streakDays = get().getStreakDays(userId);
+
+        return {
+          month: today.toLocaleDateString('zh-CN', { month: 'long' }),
+          year: today.getFullYear(),
+          totalTasks: tasks.length,
+          completedTasks,
+          completionRate,
+          totalStarsEarned,
+          totalStarsSpent,
+          streakDays,
+          achievements: get().achievements.filter(a => a.earnedAt),
+        };
+      },
+
+      getUserTaskStats: (userId) => {
+        const tasks = get().getTasksForUser(userId);
+        const checkIns = get().getCheckInsForUser(userId).filter(c => c.status === 'approved');
+        
+        return tasks.map(task => {
+          const taskCheckIns = checkIns.filter(c => c.taskId === task.id);
+          const completedCount = taskCheckIns.length;
+          const starsEarned = taskCheckIns.reduce((sum, c) => sum + c.starsEarned, 0);
+          
+          const today = new Date();
+          const thirtyDaysAgo = new Date(today);
+          thirtyDaysAgo.setDate(today.getDate() - 30);
+          
+          const recentCheckIns = taskCheckIns.filter(c => {
+            return new Date(c.checkInDate) >= thirtyDaysAgo;
+          });
+          
+          return {
+            taskId: task.id,
+            taskName: task.name,
+            taskIcon: task.icon,
+            completedCount: recentCheckIns.length,
+            totalCount: 30,
+            starsEarned,
+            completionRate: Math.round((recentCheckIns.length / 30) * 100),
+          };
+        });
       },
     }),
     {

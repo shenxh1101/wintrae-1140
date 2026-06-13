@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header, BottomNav, RewardCard, Modal, Button, Card } from '../components';
 import { useStore } from '../store';
@@ -21,6 +21,7 @@ export const ChildShopPage: React.FC = () => {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showEncouragement, setShowEncouragement] = useState(false);
+  const [encouragementMessage, setEncouragementMessage] = useState('');
 
   if (!currentUser) {
     navigate('/');
@@ -35,6 +36,11 @@ export const ChildShopPage: React.FC = () => {
   const pendingRedemptions = userRedemptions.filter(
     (r) => r.status === 'pending'
   );
+
+  const currentUserStars = useMemo(() => {
+    const user = useStore.getState().users.find(u => u.id === currentUser.id);
+    return user?.stars ?? 0;
+  }, [currentUser.id, useStore.getState().users]);
 
   const handleRedeem = (reward: Reward) => {
     setSelectedReward(reward);
@@ -65,10 +71,6 @@ export const ChildShopPage: React.FC = () => {
       setEncouragementMessage(randomMessage);
       setShowEncouragement(true);
     }, 2000);
-  };
-
-  const setEncouragementMessage = (message: string) => {
-    // This will be set in the onClose handler
   };
 
   return (
@@ -109,7 +111,7 @@ export const ChildShopPage: React.FC = () => {
             <RewardCard
               key={reward.id}
               reward={reward}
-              userStars={currentUser.stars}
+              userStars={currentUserStars}
               onRedeem={() => handleRedeem(reward)}
             />
           ))}
@@ -146,7 +148,7 @@ export const ChildShopPage: React.FC = () => {
                 ⭐ {selectedReward.starCost}
               </p>
               <p className="text-sm text-gray-500 mt-1">
-                剩余: {currentUser.stars - selectedReward.starCost} 颗星星
+                剩余: {currentUserStars - selectedReward.starCost} 颗星星
               </p>
             </div>
 

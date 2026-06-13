@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card } from '../components';
 import { useStore } from '../store';
@@ -9,7 +9,10 @@ import { clsx } from 'clsx';
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { users, setCurrentUser, setCurrentRole } = useStore();
+
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+
+  const familyMembers = useMemo(() => users, [users]);
 
   const handleLogin = () => {
     if (!selectedUser) return;
@@ -24,8 +27,8 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const parents = users.filter((u) => u.role === 'parent');
-  const children = users.filter((u) => u.role === 'child');
+  const parents = familyMembers.filter((u) => u.role === 'parent');
+  const children = familyMembers.filter((u) => u.role === 'child');
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-secondary-50 flex flex-col items-center justify-center p-4">
@@ -84,6 +87,9 @@ export const LoginPage: React.FC = () => {
                 <span className="ml-auto text-gold-600 font-bold">⭐ {child.stars}</span>
               </button>
             ))}
+            {children.length === 0 && (
+              <p className="text-gray-500 py-4">暂无可用成员，请联系管理员</p>
+            )}
           </div>
         </Card>
 

@@ -1,15 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header, BottomNav, TaskCard, Modal, Button, Card } from '../components';
 import { useStore } from '../store';
-import { Camera, FileText } from 'lucide-react';
+import { Camera, FileText, AlertCircle } from 'lucide-react';
 import { clsx } from 'clsx';
 import { encouragementMessages } from '../data/mockData';
 import { EncouragementBubble } from '../components/EncouragementBubble';
 
 export const ChildTasksPage: React.FC = () => {
   const navigate = useNavigate();
-  const { currentUser, getTodayTasks, checkIns, addCheckIn } = useStore();
+  const { currentUser, getTodayTasks, checkIns, addCheckIn, tasks } = useStore();
 
   const [showCheckInModal, setShowCheckInModal] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -18,6 +18,7 @@ export const ChildTasksPage: React.FC = () => {
   const [checkInMode, setCheckInMode] = useState<'text' | 'photo'>('text');
   const [showEncouragement, setShowEncouragement] = useState(false);
   const [encouragementMessage, setEncouragementMessage] = useState('');
+  const [photoError, setPhotoError] = useState('');
 
   if (!currentUser) {
     navigate('/');
@@ -33,9 +34,29 @@ export const ChildTasksPage: React.FC = () => {
     );
   };
 
+  const selectedTask = useMemo(() => {
+    return tasks.find((t) => t.id === selectedTaskId);
+  }, [selectedTaskId, tasks]);
+
   const handleCheckIn = (taskId: string) => {
     setSelectedTaskId(taskId);
+    setCheckInContent('');
+    setCheckInPhoto('');
+    setPhotoError('');
+    
+    const task = tasks.find((t) => t.id === taskId);
+    if (task?.requirePhoto) {
+      setCheckInMode('photo');
+    } else {
+      setCheckInMode('text');
+    }
+    
     setShowCheckInModal(true);
+  };
+
+  const handleModeChange = (mode: 'text' | 'photo') => {
+    setCheckInMode(mode);
+    setPhotoError('');
   };
 
   const submitCheckIn = () => {
@@ -43,6 +64,11 @@ export const ChildTasksPage: React.FC = () => {
 
     const task = todayTasks.find((t) => t.id === selectedTaskId);
     if (!task) return;
+
+    if (task.requirePhoto && !checkInPhoto.trim()) {
+      setPhotoError('这个任务需要上传照片才能打卡');
+      return;
+    }
 
     addCheckIn({
       taskId: selectedTaskId,
@@ -58,6 +84,7 @@ export const ChildTasksPage: React.FC = () => {
     setCheckInContent('');
     setCheckInPhoto('');
     setSelectedTaskId(null);
+    setPhotoError('');
 
     const messages = task.requirePhoto
       ? encouragementMessages.photoUploaded
@@ -70,6 +97,14 @@ export const ChildTasksPage: React.FC = () => {
   const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
   const today = new Date();
   const dayOfWeek = weekDays[today.getDay()];
+
+  const canSubmit = useMemo(() => {
+    if (!selectedTask) return false;
+    if (selectedTask.requirePhoto) {
+      return !!checkInPhoto.trim();
+    }
+    return true;
+  }, [selectedTask, checkInPhoto]);
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -120,12 +155,22 @@ export const ChildTasksPage: React.FC = () => {
       <Modal
         isOpen={showCheckInModal}
         onClose={() => setShowCheckInModal(false)}
-        title="打卡"
+        title={`打卡 - ${selectedTask?.name || ''}`}
       >
         <div className="space-y-4">
+          {selectedTask?.requirePhoto && (
+            <div className="bg-primary-50 border border-primary-200 rounded-xl p-3 flex items-start gap-2">
+              <Camera className="w-5 h-5 text-primary-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-primary-800">此任务需要上传照片</p>
+                <p className="text-xs text-primary-600 mt-1">请上传完成任务的照片作为打卡凭证</p>
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-2 mb-4">
             <button
-              onClick={() => setCheckInMode('text')}
+              onClick={() => handleModeChange('text')}
               className={clsx(
                 'flex-1 py-3 px-4 rounded-xl border-2 transition-all duration-200 flex items-center justify-center gap-2',
                 checkInMode === 'text'
@@ -137,18 +182,27 @@ export const ChildTasksPage: React.FC = () => {
               文字打卡
             </button>
             <button
-              onClick={() => setCheckInMode('photo')}
+              onClick={() => handleModeChange('photo')}
               className={clsx(
                 'flex-1 py-3 px-4 rounded-xl border-2 transition-all duration-200 flex items-center justify-center gap-2',
                 checkInMode === 'photo'
                   ? 'border-primary-500 bg-primary-50 text-primary-700'
-                  : 'border-gray-200 hover:border-gray-300'
+                  : 'border-gray-200 hover:border-gray-300',
+                selectedTask?.requirePhoto && 'border-primary-300 bg-primary-50/50'
               )}
+              disabled={selectedTask?.requirePhoto ? false : false}
             >
               <Camera className="w-5 h-5" />
-              拍照打卡
+              {selectedTask?.requirePhoto ? '必须拍照' : '拍照打卡'}
             </button>
           </div>
+
+          {photoError && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-red-700">{photoError}</p>
+            </div>
+          )}
 
           {checkInMode === 'text' ? (
             <textarea
@@ -162,23 +216,32 @@ export const ChildTasksPage: React.FC = () => {
               <input
                 type="url"
                 value={checkInPhoto}
-                onChange={(e) => setCheckInPhoto(e.target.value)}
+                onChange={(e) => {
+                  setCheckInPhoto(e.target.value);
+                  setPhotoError('');
+                }}
                 placeholder="输入图片URL或粘贴截图"
-                className="input"
+                className={clsx(
+                  'input',
+                  photoError && 'border-red-500 focus:border-red-500'
+                )}
               />
               {checkInPhoto && (
                 <img
                   src={checkInPhoto}
                   alt="预览"
                   className="w-full h-48 object-cover rounded-xl border-2 border-gray-200"
+                  onError={() => setPhotoError('图片链接无效，请检查URL')}
                 />
               )}
-              <textarea
-                value={checkInContent}
-                onChange={(e) => setCheckInContent(e.target.value)}
-                placeholder="添加一些描述..."
-                className="input min-h-[80px] resize-none"
-              />
+              {checkInPhoto && !photoError && (
+                <textarea
+                  value={checkInContent}
+                  onChange={(e) => setCheckInContent(e.target.value)}
+                  placeholder="添加一些描述... (可选)"
+                  className="input min-h-[80px] resize-none"
+                />
+              )}
             </div>
           )}
 
@@ -190,7 +253,11 @@ export const ChildTasksPage: React.FC = () => {
             >
               取消
             </Button>
-            <Button onClick={submitCheckIn} className="flex-1">
+            <Button
+              onClick={submitCheckIn}
+              disabled={!canSubmit}
+              className="flex-1"
+            >
               提交打卡 ✓
             </Button>
           </div>

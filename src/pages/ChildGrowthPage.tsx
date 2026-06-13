@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Header,
@@ -16,6 +16,8 @@ import {
   Award,
   ChevronRight,
   BarChart3,
+  Target,
+  Flame,
 } from 'lucide-react';
 import { MoodPicker } from '../components/MoodPicker';
 import type { MoodType } from '../types';
@@ -31,7 +33,9 @@ export const ChildGrowthPage: React.FC = () => {
     tasks,
     achievements,
     addMoodRecord,
-    getStreakDays,
+    getUserWeeklyReport,
+    getUserMonthlyReport,
+    getUserTaskStats,
   } = useStore();
 
   const [selectedPeriod, setSelectedPeriod] = useState<ReportPeriod>('week');
@@ -44,26 +48,13 @@ export const ChildGrowthPage: React.FC = () => {
     return null;
   }
 
-  const userCheckIns = checkIns.filter(
-    (c) => c.userId === currentUser.id && c.status === 'approved'
-  );
+  const weeklyReport = useMemo(() => getUserWeeklyReport(currentUser.id), [currentUser.id, checkIns, tasks]);
+  const monthlyReport = useMemo(() => getUserMonthlyReport(currentUser.id), [currentUser.id, checkIns, tasks]);
+  const taskStats = useMemo(() => getUserTaskStats(currentUser.id), [currentUser.id, checkIns, tasks]);
 
-  const streakDays = getStreakDays(currentUser.id);
-  const totalStars = currentUser.stars;
   const earnedAchievements = achievements.filter((a) => a.earnedAt);
 
   const today = new Date();
-  const weekAgo = new Date(today);
-  weekAgo.setDate(weekAgo.getDate() - 7);
-
-  const weekCheckIns = userCheckIns.filter((c) => {
-    const date = new Date(c.checkInDate);
-    return date >= weekAgo && date <= today;
-  });
-
-  const completionRate = userCheckIns.length > 0
-    ? Math.round((weekCheckIns.length / 7) * 100)
-    : 0;
 
   const handleSaveMood = () => {
     if (!selectedMood) return;
@@ -84,13 +75,13 @@ export const ChildGrowthPage: React.FC = () => {
     {
       icon: '🔥',
       label: '连续打卡',
-      value: `${streakDays}天`,
+      value: `${weeklyReport.streakDays}天`,
       color: 'from-orange-400 to-red-500',
     },
     {
       icon: '⭐',
-      label: '我的星星',
-      value: `${totalStars}颗`,
+      label: '本周获星',
+      value: `${weeklyReport.starsEarned}颗`,
       color: 'from-gold-400 to-yellow-500',
     },
     {
@@ -102,28 +93,34 @@ export const ChildGrowthPage: React.FC = () => {
     {
       icon: '✅',
       label: '本周完成',
-      value: `${weekCheckIns.length}次`,
+      value: `${weeklyReport.completedTasks}次`,
       color: 'from-green-400 to-emerald-500',
     },
   ];
 
+  const currentReport = selectedPeriod === 'week' ? weeklyReport : monthlyReport;
+  const totalStars = selectedPeriod === 'week' 
+    ? weeklyReport.starsEarned 
+    : monthlyReport.totalStarsEarned;
+  const totalSpent = selectedPeriod === 'week' 
+    ? 0 
+    : monthlyReport.totalStarsSpent;
+
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
-      <Header
-        title="成长记录"
-        user={currentUser}
-        showStars
-      />
+      <Header title="成长记录" user={currentUser} showStars />
 
       <div className="container mx-auto px-4 py-6 space-y-6">
         <Card className="bg-gradient-to-r from-primary-500 to-secondary-500 text-white">
           <div className="text-center mb-4">
-            <p className="text-white/80 text-sm mb-1">本周任务完成率</p>
-            <div className="text-5xl font-bold mb-2">{completionRate}%</div>
+            <p className="text-white/80 text-sm mb-1">
+              {selectedPeriod === 'week' ? '本周' : '本月'}任务完成率
+            </p>
+            <div className="text-5xl font-bold mb-2">{currentReport.completionRate}%</div>
             <div className="w-full bg-white/30 rounded-full h-3">
               <div
                 className="bg-white rounded-full h-3 transition-all duration-1000"
-                style={{ width: `${completionRate}%` }}
+                style={{ width: `${currentReport.completionRate}%` }}
               />
             </div>
           </div>
@@ -176,10 +173,12 @@ export const ChildGrowthPage: React.FC = () => {
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
               <div className="flex items-center gap-3">
                 <Calendar className="w-5 h-5 text-gray-500" />
-                <span className="text-gray-700">任务完成数</span>
+                <span className="text-gray-700">
+                  {selectedPeriod === 'week' ? '本周' : '本月'}任务完成数
+                </span>
               </div>
               <span className="font-bold text-gray-800">
-                {selectedPeriod === 'week' ? weekCheckIns.length : weekCheckIns.length * 4} 次
+                {currentReport.completedTasks} 次
               </span>
             </div>
 
@@ -188,18 +187,68 @@ export const ChildGrowthPage: React.FC = () => {
                 <Star className="w-5 h-5 text-gold-500" />
                 <span className="text-gray-700">获得星星</span>
               </div>
-              <span className="font-bold text-gold-600">
-                +{selectedPeriod === 'week' ? weekCheckIns.reduce((sum, c) => sum + c.starsEarned, 0) : weekCheckIns.reduce((sum, c) => sum + c.starsEarned, 0) * 4} 颗
-              </span>
+              <span className="font-bold text-gold-600">+{totalStars} 颗</span>
             </div>
+
+            {selectedPeriod === 'month' && (
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <TrendingUp className="w-5 h-5 text-secondary-500" />
+                  <span className="text-gray-700">消耗星星</span>
+                </div>
+                <span className="font-bold text-secondary-600">-{totalSpent} 颗</span>
+              </div>
+            )}
 
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
               <div className="flex items-center gap-3">
-                <TrendingUp className="w-5 h-5 text-success-500" />
-                <span className="text-gray-700">进步最大</span>
+                <Flame className="w-5 h-5 text-orange-500" />
+                <span className="text-gray-700">连续打卡</span>
               </div>
-              <span className="font-bold text-gray-800">阅读 📚</span>
+              <span className="font-bold text-orange-600">
+                {currentReport.streakDays} 天
+              </span>
             </div>
+          </div>
+        </Card>
+
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Target className="w-5 h-5 text-primary-500" />
+              <h3 className="font-bold text-gray-800">各习惯统计</h3>
+            </div>
+            <span className="text-sm text-gray-500">近30天</span>
+          </div>
+
+          <div className="space-y-3">
+            {taskStats.map((stat) => (
+              <div key={stat.taskId} className="p-3 bg-gray-50 rounded-xl">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-2xl">{stat.taskIcon}</span>
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-800">{stat.taskName}</div>
+                    <div className="text-sm text-gray-600">
+                      完成 {stat.completedCount} / {stat.totalCount} 次
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-gold-600 font-bold">+{stat.starsEarned}⭐</div>
+                    <div className="text-xs text-gray-500">{stat.completionRate}%</div>
+                  </div>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-gradient-to-r from-primary-400 to-secondary-400 rounded-full h-2 transition-all"
+                    style={{ width: `${stat.completionRate}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+
+            {taskStats.length === 0 && (
+              <p className="text-center text-gray-500 py-4">暂无习惯数据</p>
+            )}
           </div>
         </Card>
 

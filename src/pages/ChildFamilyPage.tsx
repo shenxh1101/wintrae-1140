@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Header,
@@ -37,7 +37,10 @@ export const ChildFamilyPage: React.FC = () => {
     return null;
   }
 
-  const familyMembers = users.filter((u) => u.familyId === family.id);
+  const familyMembers = useMemo(() => {
+    return users.filter((u) => u.familyId === family.id);
+  }, [users, family.id]);
+
   const activeChallenges = challenges.filter((c) => c.isActive);
 
   const handleSwitchUser = (user: typeof currentUser) => {

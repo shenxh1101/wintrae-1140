@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Header,
@@ -33,7 +33,6 @@ export const ParentApprovePage: React.FC = () => {
     rejectCheckIn,
     approveRedemption,
     rejectRedemption,
-    getPendingApprovals,
   } = useStore();
 
   if (!currentUser) {
@@ -44,6 +43,19 @@ export const ParentApprovePage: React.FC = () => {
   const pendingCheckIns = checkIns.filter((c) => c.status === 'pending');
   const pendingRedemptions = redemptions.filter((r) => r.status === 'pending');
   const pendingCount = pendingCheckIns.length + pendingRedemptions.length;
+
+  const getRewardById = (rewardId: string) => {
+    return rewards.find((r) => r.id === rewardId);
+  };
+
+  const getUserById = (userId: string) => {
+    return users.find((u) => u.id === userId);
+  };
+
+  const getUserStars = (userId: string) => {
+    const user = users.find((u) => u.id === userId);
+    return user?.stars ?? 0;
+  };
 
   const handleApproveCheckIn = (checkIn: CheckIn) => {
     approveCheckIn(checkIn.id, currentUser.id);
@@ -61,21 +73,9 @@ export const ParentApprovePage: React.FC = () => {
     rejectRedemption(redemption.id);
   };
 
-  const getRewardById = (rewardId: string) => {
-    return rewards.find((r) => r.id === rewardId);
-  };
-
-  const getUserById = (userId: string) => {
-    return users.find((u) => u.id === userId);
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
-      <Header
-        title="审批中心"
-        user={currentUser}
-        showStars
-      />
+      <Header title="审批中心" user={currentUser} showStars />
 
       <div className="container mx-auto px-4 py-6">
         {pendingCount === 0 ? (
@@ -130,20 +130,21 @@ export const ParentApprovePage: React.FC = () => {
                               </Badge>
                             </div>
                             <p className="text-sm text-gray-600 mb-2">
-                              {checkIn.content}
+                              {checkIn.content || '无文字描述'}
                             </p>
                             {checkIn.photo && (
                               <img
                                 src={checkIn.photo}
                                 alt="打卡照片"
                                 className="w-full h-40 object-cover rounded-xl border-2 border-gray-200 mb-2"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
                               />
                             )}
                             <div className="flex items-center gap-3 text-sm">
                               <span className="text-gray-500">
-                                {new Date(
-                                  checkIn.createdAt
-                                ).toLocaleDateString()}
+                                {new Date(checkIn.createdAt).toLocaleDateString()}
                               </span>
                               <Badge variant="gold" size="sm">
                                 <Star className="w-3 h-3 mr-1" />
@@ -188,6 +189,7 @@ export const ParentApprovePage: React.FC = () => {
                   {pendingRedemptions.map((redemption) => {
                     const user = getUserById(redemption.userId);
                     const reward = getRewardById(redemption.rewardId);
+                    const currentStars = getUserStars(redemption.userId);
 
                     return (
                       <Card key={redemption.id}>
@@ -199,7 +201,7 @@ export const ParentApprovePage: React.FC = () => {
                                 {user?.name}
                               </span>
                               <Badge variant="gold" size="sm">
-                                ⭐ {user?.stars}
+                                ⭐ {currentStars}
                               </Badge>
                             </div>
                             {reward && (
@@ -224,9 +226,7 @@ export const ParentApprovePage: React.FC = () => {
                               </>
                             )}
                             <div className="text-sm text-gray-500 mt-2">
-                              {new Date(
-                                redemption.createdAt
-                              ).toLocaleDateString()}
+                              {new Date(redemption.createdAt).toLocaleDateString()}
                             </div>
                           </div>
                         </div>
@@ -238,7 +238,7 @@ export const ParentApprovePage: React.FC = () => {
                             className="flex-1"
                             icon={<XCircle className="w-4 h-4" />}
                           >
-                            拒绝
+                            拒绝（星星返还）
                           </Button>
                           <Button
                             onClick={() => handleApproveRedemption(redemption)}

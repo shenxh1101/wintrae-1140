@@ -143,3 +143,13 @@ export interface MonthlyReport {
   streakDays: number;
   achievements: Achievement[];
 }
+
+export interface TaskStats {
+  taskId: string;
+  taskName: string;
+  taskIcon: string;
+  completedCount: number;
+  totalCount: number;
+  starsEarned: number;
+  completionRate: number;
+}
