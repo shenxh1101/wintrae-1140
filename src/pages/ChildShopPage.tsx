@@ -3,9 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Header, BottomNav, Card, Modal, Button, Badge } from '../components';
 import { useStore } from '../store';
 import type { Reward } from '../types';
-import { Gift, Clock, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
-import { encouragementMessages } from '../data/mockData';
-import { EncouragementBubble } from '../components/EncouragementBubble';
+import { Gift, Clock, CheckCircle2, XCircle, AlertCircle, History } from 'lucide-react';
 import { clsx } from 'clsx';
 
 export const ChildShopPage: React.FC = () => {
@@ -16,12 +14,12 @@ export const ChildShopPage: React.FC = () => {
     addRedemption,
     deductStars,
     getLatestRedemptionsForReward,
+    getAllRedemptionHistory,
   } = useStore();
 
   const [selectedReward, setSelectedReward] = useState<Reward | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [showEncouragement, setShowEncouragement] = useState(false);
 
   if (!currentUser) {
     navigate('/');
@@ -29,6 +27,8 @@ export const ChildShopPage: React.FC = () => {
   }
 
   const activeRewards = rewards.filter((r) => r.isActive);
+  const allRedemptions = getAllRedemptionHistory(currentUser.id);
+  const pendingCount = allRedemptions.filter(r => r.status === 'pending').length;
 
   const getRewardStatus = (rewardId: string) => {
     return getLatestRedemptionsForReward(currentUser.id, rewardId);
@@ -100,15 +100,30 @@ export const ChildShopPage: React.FC = () => {
     <div className="min-h-screen bg-gray-50 pb-20">
       <Header title="奖励商店" user={currentUser} showStars />
 
-      <div className="container mx-auto px-4 py-6">
-        <div className="mb-6">
-          <div className="flex items-center gap-2 mb-2">
-            <Gift className="w-6 h-6 text-primary-500" />
-            <h2 className="text-xl font-bold text-gray-800">奖励商店</h2>
+      <div className="container mx-auto px-4 py-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Gift className="w-6 h-6 text-primary-500" />
+              <h2 className="text-xl font-bold text-gray-800">奖励商店</h2>
+            </div>
+            <p className="text-sm text-gray-600">
+              用你努力的星星换取喜欢的奖励吧！
+            </p>
           </div>
-          <p className="text-sm text-gray-600">
-            用你努力的星星换取喜欢的奖励吧！
-          </p>
+
+          <button
+            onClick={() => navigate('/child/redemptions')}
+            className="relative flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-full text-sm font-semibold text-gray-700 hover:bg-gray-200 transition-colors"
+          >
+            <History className="w-4 h-4" />
+            兑换记录
+            {pendingCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                {pendingCount}
+              </span>
+            )}
+          </button>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -245,12 +260,6 @@ export const ChildShopPage: React.FC = () => {
           </div>
         </div>
       </Modal>
-
-      <EncouragementBubble
-        message={encouragementMessages.rewardRedeemed[0]}
-        isVisible={showEncouragement}
-        onClose={() => setShowEncouragement(false)}
-      />
 
       <BottomNav role="child" />
     </div>

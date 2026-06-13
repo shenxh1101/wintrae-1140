@@ -20,12 +20,14 @@ import {
   Flame,
   CheckCircle2,
   XCircle,
+  Clock,
 } from 'lucide-react';
 import { MoodPicker } from '../components/MoodPicker';
 import type { MoodType } from '../types';
 import { clsx } from 'clsx';
 
 type ReportPeriod = 'week' | 'month';
+type MonthType = 'calendar' | 'rolling';
 
 export const ChildGrowthPage: React.FC = () => {
   const navigate = useNavigate();
@@ -37,6 +39,8 @@ export const ChildGrowthPage: React.FC = () => {
   } = useStore();
 
   const [selectedPeriod, setSelectedPeriod] = useState<ReportPeriod>('week');
+  const [monthType, setMonthType] = useState<MonthType>('calendar');
+  const [showTimeline, setShowTimeline] = useState(false);
   const [showMoodModal, setShowMoodModal] = useState(false);
   const [selectedMood, setSelectedMood] = useState<MoodType | undefined>();
   const [moodNote, setMoodNote] = useState('');
@@ -47,8 +51,8 @@ export const ChildGrowthPage: React.FC = () => {
   }
 
   const report = useMemo(
-    () => getEnhancedReport(currentUser.id, selectedPeriod),
-    [currentUser.id, selectedPeriod, useStore.getState().checkIns, useStore.getState().tasks]
+    () => getEnhancedReport(currentUser.id, selectedPeriod, monthType),
+    [currentUser.id, selectedPeriod, monthType, useStore.getState().checkIns, useStore.getState().tasks]
   );
 
   const earnedAchievements = achievements.filter((a) => a.earnedAt);
@@ -69,19 +73,21 @@ export const ChildGrowthPage: React.FC = () => {
     setMoodNote('');
   };
 
-  const repeatTypeLabels = {
+  const repeatTypeLabels: Record<string, string> = {
     daily: '每天',
     weekdays: '工作日',
     weekends: '周末',
     custom: '自定义',
   };
 
-  const repeatTypeColors = {
+  const repeatTypeColors: Record<string, string> = {
     daily: 'from-orange-400 to-red-500',
     weekdays: 'from-blue-400 to-indigo-500',
     weekends: 'from-green-400 to-emerald-500',
     custom: 'from-purple-400 to-pink-500',
   };
+
+  const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -91,7 +97,7 @@ export const ChildGrowthPage: React.FC = () => {
         <Card className="bg-gradient-to-r from-primary-500 to-secondary-500 text-white">
           <div className="text-center mb-4">
             <p className="text-white/80 text-sm mb-1">
-              {selectedPeriod === 'week' ? '本周' : '本月'}综合完成率
+              {selectedPeriod === 'week' ? '本周' : '本月'}{monthType === 'rolling' ? '(近30天)' : ''}综合完成率
             </p>
             <div className="text-5xl font-bold mb-2">{report.overallRate}%</div>
             <div className="w-full bg-white/30 rounded-full h-3">
@@ -129,13 +135,16 @@ export const ChildGrowthPage: React.FC = () => {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-primary-500" />
-              <h3 className="font-bold text-gray-800">按周期分类统计</h3>
+              <h3 className="font-bold text-gray-800">报告设置</h3>
             </div>
+          </div>
+
+          <div className="space-y-4">
             <div className="flex gap-2">
               <button
                 onClick={() => setSelectedPeriod('week')}
                 className={clsx(
-                  'px-3 py-1 rounded-full text-sm font-semibold transition-all',
+                  'flex-1 py-2 px-4 rounded-xl text-sm font-semibold transition-all',
                   selectedPeriod === 'week'
                     ? 'bg-primary-500 text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -146,7 +155,7 @@ export const ChildGrowthPage: React.FC = () => {
               <button
                 onClick={() => setSelectedPeriod('month')}
                 className={clsx(
-                  'px-3 py-1 rounded-full text-sm font-semibold transition-all',
+                  'flex-1 py-2 px-4 rounded-xl text-sm font-semibold transition-all',
                   selectedPeriod === 'month'
                     ? 'bg-primary-500 text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -154,6 +163,107 @@ export const ChildGrowthPage: React.FC = () => {
               >
                 月报
               </button>
+            </div>
+
+            {selectedPeriod === 'month' && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setMonthType('calendar')}
+                  className={clsx(
+                    'flex-1 py-2 px-4 rounded-xl text-sm font-semibold transition-all',
+                    monthType === 'calendar'
+                      ? 'bg-secondary-500 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  )}
+                >
+                  📅 自然月
+                </button>
+                <button
+                  onClick={() => setMonthType('rolling')}
+                  className={clsx(
+                    'flex-1 py-2 px-4 rounded-xl text-sm font-semibold transition-all',
+                    monthType === 'rolling'
+                      ? 'bg-secondary-500 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  )}
+                >
+                  📊 近30天
+                </button>
+              </div>
+            )}
+
+            <Button
+              onClick={() => setShowTimeline(!showTimeline)}
+              variant={showTimeline ? 'primary' : 'ghost'}
+              className="w-full"
+              icon={<Calendar className="w-4 h-4" />}
+            >
+              {showTimeline ? '收起' : '展开'}任务时间轴
+            </Button>
+          </div>
+        </Card>
+
+        {showTimeline && (
+          <Card>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-primary-500" />
+                <h3 className="font-bold text-gray-800">任务时间轴</h3>
+              </div>
+              <span className="text-sm text-gray-500">
+                {report.dailyTimeline.length}天
+              </span>
+            </div>
+
+            <div className="space-y-4 max-h-[400px] overflow-y-auto">
+              {report.dailyTimeline.map((day, dayIdx) => (
+                <div key={dayIdx} className="border-b border-gray-100 pb-3 last:border-0">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-sm font-semibold text-gray-700">
+                      {new Date(day.date).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
+                    </span>
+                    <span className="text-xs text-gray-500">周{weekDays[day.dayOfWeek]}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {day.tasks.filter(t => t.isExpected).map((task) => (
+                      <div
+                        key={task.taskId}
+                        className={clsx(
+                          'p-2 rounded-lg text-sm flex items-center gap-2',
+                          task.checkIn?.status === 'approved'
+                            ? 'bg-success-50 text-success-700'
+                            : task.checkIn?.status === 'rejected'
+                            ? 'bg-red-50 text-red-700'
+                            : task.checkIn?.status === 'pending'
+                            ? 'bg-yellow-50 text-yellow-700'
+                            : 'bg-gray-100 text-gray-500'
+                        )}
+                      >
+                        <span>{task.taskIcon}</span>
+                        <span className="flex-1 truncate">{task.taskName}</span>
+                        {task.checkIn?.status === 'approved' ? (
+                          <CheckCircle2 className="w-4 h-4 text-success-500" />
+                        ) : task.checkIn?.status === 'rejected' ? (
+                          <XCircle className="w-4 h-4 text-red-500" />
+                        ) : task.checkIn?.status === 'pending' ? (
+                          <Clock className="w-4 h-4 text-yellow-500" />
+                        ) : (
+                          <span className="text-xs">未打卡</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-primary-500" />
+              <h3 className="font-bold text-gray-800">按周期分类统计</h3>
             </div>
           </div>
 

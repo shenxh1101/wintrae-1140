@@ -16,7 +16,9 @@ import type {
   StreakTrend,
   ChildDetail,
   EnhancedReport,
+  EnhancedChildDetail,
   RepeatType,
+  DailyTimeline,
 } from '../types';
 import {
   mockFamily,
@@ -83,12 +85,20 @@ interface AppState {
   addChild: (name: string, avatar: string) => User;
   updateUser: (id: string, updates: Partial<User>) => void;
   
-  getEnhancedReport: (userId: string, period: 'week' | 'month') => EnhancedReport;
+  getEnhancedReport: (userId: string, period: 'week' | 'month', monthType?: 'calendar' | 'rolling') => EnhancedReport;
   getStreakTrend: (userId: string, days: number) => StreakTrend[];
   getChildDetail: (userId: string) => ChildDetail;
+  getEnhancedChildDetail: (userId: string) => EnhancedChildDetail;
   
   getEffectiveCheckIn: (userId: string, taskId: string, date: string) => CheckIn | undefined;
   getLatestRedemptionsForReward: (userId: string, rewardId: string) => Redemption | undefined;
+  
+  assignTaskToChild: (taskId: string, childId: string) => void;
+  unassignTaskFromChild: (taskId: string, childId: string) => void;
+  adjustStars: (userId: string, delta: number) => void;
+  
+  getAllCheckInHistory: (userId: string) => CheckIn[];
+  getAllRedemptionHistory: (userId: string) => Redemption[];
 }
 
 export const useStore = create<AppState>()(
@@ -502,7 +512,7 @@ export const useStore = create<AppState>()(
         };
       },
 
-      getEnhancedReport: (userId, period) => {
+      getEnhancedReport: (userId, period, monthType = 'calendar') => {
         const tasks = get().getTasksForUser(userId);
         const checkIns = get().getCheckInsForUser(userId);
         const redemptions = get().getRedemptionsForUser(userId);
@@ -519,9 +529,16 @@ export const useStore = create<AppState>()(
           startDate.setHours(0, 0, 0, 0);
           daysCount = 7;
         } else {
-          startDate = new Date(today.getFullYear(), today.getMonth(), 1);
-          const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-          daysCount = Math.min(30, endOfMonth.getDate());
+          if (monthType === 'calendar') {
+            startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+            const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            daysCount = endOfMonth.getDate();
+          } else {
+            startDate = new Date(today);
+            startDate.setDate(today.getDate() - 29);
+            startDate.setHours(0, 0, 0, 0);
+            daysCount = 30;
+          }
         }
         
         const periodCheckIns = checkIns.filter(c => {
@@ -594,6 +611,45 @@ export const useStore = create<AppState>()(
         
         const streakTrend = get().getStreakTrend(userId, daysCount);
         
+        const dailyTimeline: DailyTimeline[] = [];
+        for (let i = 0; i < daysCount; i++) {
+          const date = new Date(startDate);
+          date.setDate(startDate.getDate() + i);
+          const dateStr = date.toISOString().split('T')[0];
+          const dayOfWeek = date.getDay();
+          
+          const dayTasks = tasks.map(task => {
+            let isExpected = false;
+            
+            if (task.repeatType === 'daily') {
+              isExpected = true;
+            } else if (task.repeatType === 'weekdays') {
+              isExpected = dayOfWeek >= 1 && dayOfWeek <= 5;
+            } else if (task.repeatType === 'weekends') {
+              isExpected = dayOfWeek === 0 || dayOfWeek === 6;
+            } else if (task.repeatType === 'custom' && task.repeatDays) {
+              isExpected = task.repeatDays.includes(dayOfWeek);
+            }
+            
+            const dayCheckIn = periodCheckIns.find(c => c.taskId === task.id);
+            
+            return {
+              taskId: task.id,
+              taskName: task.name,
+              taskIcon: task.icon,
+              repeatType: task.repeatType,
+              isExpected,
+              checkIn: dayCheckIn,
+            };
+          });
+          
+          dailyTimeline.push({
+            date: dateStr,
+            dayOfWeek,
+            tasks: dayTasks,
+          });
+        }
+        
         const periodRedemptions = redemptions.filter(r => {
           const date = new Date(r.createdAt);
           return date >= startDate && date <= today;
@@ -606,16 +662,94 @@ export const useStore = create<AppState>()(
         
         return {
           period,
+          monthType,
           startDate: startDate.toISOString().split('T')[0],
           endDate: today.toISOString().split('T')[0],
           overallRate: totalExpected > 0 ? Math.round((totalCompleted / totalExpected) * 100) : 0,
           byRepeatType,
           taskBreakdown,
           streakTrend,
+          dailyTimeline,
           totalStarsEarned,
           totalStarsSpent,
           streakDays: get().getStreakDays(userId),
         };
+      },
+
+      getEnhancedChildDetail: (userId) => {
+        const baseDetail = get().getChildDetail(userId);
+        const allTasks = get().tasks.filter(t => t.isActive);
+        const userCheckIns = get().getCheckInsForUser(userId).sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        const userRedemptions = get().getRedemptionsForUser(userId).sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        
+        return {
+          ...baseDetail,
+          allTasks,
+          pendingApprovals: [
+            ...userCheckIns.filter(c => c.status === 'pending'),
+            ...userRedemptions.filter(r => r.status === 'pending'),
+          ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+          pendingCheckIns: userCheckIns.filter(c => c.status === 'pending'),
+          pendingRedemptions: userRedemptions.filter(r => r.status === 'pending'),
+          completedCheckIns: userCheckIns.filter(c => c.status === 'approved'),
+          completedRedemptions: userRedemptions.filter(r => r.status === 'approved'),
+          rejectedCheckIns: userCheckIns.filter(c => c.status === 'rejected'),
+          rejectedRedemptions: userRedemptions.filter(r => r.status === 'rejected'),
+        };
+      },
+
+      assignTaskToChild: (taskId, childId) => {
+        const task = get().tasks.find(t => t.id === taskId);
+        if (!task) return;
+        
+        if (!task.assignedTo.includes(childId)) {
+          set(state => ({
+            tasks: state.tasks.map(t =>
+              t.id === taskId
+                ? { ...t, assignedTo: [...t.assignedTo, childId] }
+                : t
+            ),
+          }));
+        }
+      },
+
+      unassignTaskFromChild: (taskId, childId) => {
+        set(state => ({
+          tasks: state.tasks.map(t =>
+            t.id === taskId
+              ? { ...t, assignedTo: t.assignedTo.filter(id => id !== childId) }
+              : t
+          ),
+        }));
+      },
+
+      adjustStars: (userId, delta) => {
+        set(state => ({
+          users: state.users.map(u =>
+            u.id === userId
+              ? { ...u, stars: Math.max(0, u.stars + delta) }
+              : u
+          ),
+          currentUser: state.currentUser?.id === userId
+            ? { ...state.currentUser, stars: Math.max(0, state.currentUser.stars + delta) }
+            : state.currentUser,
+        }));
+      },
+
+      getAllCheckInHistory: (userId) => {
+        return get().getCheckInsForUser(userId).sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      },
+
+      getAllRedemptionHistory: (userId) => {
+        return get().getRedemptionsForUser(userId).sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
       },
     }),
     {

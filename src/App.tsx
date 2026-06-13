@@ -11,6 +11,7 @@ import {
   ParentApprovePage,
   ParentSettingsPage,
   ChildDetailPage,
+  ChildRedemptionHistoryPage,
 } from './pages';
 
 function App() {
@@ -24,6 +25,7 @@ function App() {
           <Route path="/child/shop" element={<ChildShopPage />} />
           <Route path="/child/growth" element={<ChildGrowthPage />} />
           <Route path="/child/family" element={<ChildFamilyPage />} />
+          <Route path="/child/redemptions" element={<ChildRedemptionHistoryPage />} />
 
           <Route path="/parent/tasks" element={<ParentTasksPage />} />
           <Route path="/parent/rewards" element={<ParentRewardsPage />} />

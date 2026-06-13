@@ -178,6 +178,7 @@ export interface ChildDetail {
 
 export interface EnhancedReport {
   period: 'week' | 'month';
+  monthType?: 'calendar' | 'rolling';
   startDate: string;
   endDate: string;
   overallRate: number;
@@ -189,7 +190,32 @@ export interface EnhancedReport {
   };
   taskBreakdown: TaskStats[];
   streakTrend: StreakTrend[];
+  dailyTimeline: DailyTimeline[];
   totalStarsEarned: number;
   totalStarsSpent: number;
   streakDays: number;
+}
+
+export interface DailyTimeline {
+  date: string;
+  dayOfWeek: number;
+  tasks: {
+    taskId: string;
+    taskName: string;
+    taskIcon: string;
+    repeatType: RepeatType;
+    isExpected: boolean;
+    checkIn?: CheckIn;
+  }[];
+}
+
+export interface EnhancedChildDetail extends ChildDetail {
+  allTasks: Task[];
+  pendingApprovals: (CheckIn | Redemption)[];
+  pendingCheckIns: CheckIn[];
+  pendingRedemptions: Redemption[];
+  completedCheckIns: CheckIn[];
+  completedRedemptions: Redemption[];
+  rejectedCheckIns: CheckIn[];
+  rejectedRedemptions: Redemption[];
 }
